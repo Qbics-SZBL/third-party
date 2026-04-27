@@ -187,6 +187,7 @@ subroutine convergence_test(icycle,tene,tconv)
 
   ! send convergence information to task module
   call dlf_task_set_l("CONVERGED",tconv)
+  call dlf_put_conv(icycle, vale, svar, tole, vals, tols, valrmss, tolrmss, valg, tolg, valrmsg, tolrmsg, tconv) ! Add for Qbics.
 
 ! formats
 1000 format (a10,2x,es10.4," Target: ",es10.4," converged? ",a4)
