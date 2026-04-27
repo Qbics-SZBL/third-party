@@ -1235,6 +1235,7 @@ subroutine dlf_neb_improved_tangent_neb
     end do
     if (glob%iam == 0) close(501)
   end if
+    call dlf_put_neb(neb%ene, neb%xcoords, dist, ftan, fper) ! Qbics way to report.
 
 end subroutine dlf_neb_improved_tangent_neb
 !!****
@@ -1298,7 +1299,7 @@ subroutine dlf_neb_checkstep
       if(jimage==neb%maximage) exit
       treduce(jimage)=.false. ! will be covered now
     end do
-    print*,"Resetting images",iimage," to ",jimage-1
+    ! print*,"Resetting images",iimage," to ",jimage-1 ! Commented out for Qbics
     ! This does not appear to cause problems for microiterative opts
     ! (at least, no more than the problems it causes for standard opts)
     ! but keeping an eye on it...
@@ -2234,4 +2235,3 @@ subroutine dlf_checkpoint_neb_read(tok)
 end subroutine dlf_checkpoint_neb_read
 
 !!****
-

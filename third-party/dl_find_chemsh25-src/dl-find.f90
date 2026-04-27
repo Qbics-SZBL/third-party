@@ -116,7 +116,7 @@ subroutine dl_find(nvarin,nvarin2,nspec,master&
   call clock_stop("TOTAL")
   call time_report
 
-  call allocate_report
+  ! call allocate_report ! Commented for Qbics.
 
 end subroutine dl_find
 
@@ -1328,8 +1328,8 @@ subroutine dlf_fail(msg)
   character(*),intent(in) :: msg
   call flush(stdout)
   call flush(stderr)
-  write(stderr,"(/,a,/,a,/)") "DL-FIND ERROR:",msg
-  write(stdout,"(/,a,/,a,/)") "DL-FIND ERROR:",msg
+  ! write(stderr,"(/,a,/,a,/)") "DL-FIND ERROR:",msg ! Commented out for Qbics.
+  ! write(stdout,"(/,a,/,a,/)") "DL-FIND ERROR:",msg ! Commented out for Qbics.
   call flush(stdout)
   call flush(stderr)
   ! Clean up allocatable arrays.
@@ -1354,10 +1354,37 @@ subroutine dlf_fail(msg)
      call flush(stderr)
   end if
   ! Exit
-  call dlf_error()
+  ! call dlf_error()
+  call dlf_qbics_error(msg) ! Changed for Qbics.
   ! this should not be reached, as dlf_error should not return
   stop
 end subroutine dlf_fail
+!!****
+
+! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+subroutine dlf_qbics_error(msg)
+  use iso_c_binding, only: c_char, c_null_char
+  implicit none
+  character(*), intent(in) :: msg
+  character(kind=c_char), allocatable :: cmsg(:)
+  integer :: n, i
+
+  interface
+    subroutine dlf_error_c(cmsg) bind(C, name="dlf_error_")
+      use iso_c_binding, only: c_char
+      character(kind=c_char), dimension(*), intent(in) :: cmsg
+    end subroutine dlf_error_c
+  end interface
+
+  n = len_trim(msg)
+  allocate(cmsg(n + 1))
+  do i = 1, n
+    cmsg(i) = char(iachar(msg(i:i)), kind=c_char)
+  end do
+  cmsg(n + 1) = c_null_char
+
+  call dlf_error_c(cmsg)
+end subroutine dlf_qbics_error
 !!****
 
 ! %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
