@@ -79,7 +79,11 @@
         END IF
 
         nbytes = m * n * S
-        k = INT(ISHFT(INT(nmb, 8), 20) / INT(nbytes, 8))
+        IF (0 .LT. nbytes) THEN
+          k = INT(ISHFT(INT(nmb, 8), 20) / INT(nbytes, 8))
+        ELSE
+          k = 0
+        END IF
         IF (0 .GE. k) k = 1
 
         WRITE(*, "(3(A,I0),2(A,I0),A,I0)")                              &
@@ -88,9 +92,10 @@
      &    " size_mb=", INT(k,8)*INT(nbytes,8)/ISHFT(1,20)
         CALL libxs_init()
 
-        ALLOCATE(a1(ldi * n * k), b1(ldo * n * k))
-        an(1:ldi, 1:n, 1:k) => a1
-        bn(1:ldo, 1:n, 1:k) => b1
+        ncount = MAX(ldi, 1) * MAX(n, 1) * k
+        ALLOCATE(a1(ncount), b1(ncount))
+        an(1:MAX(ldi,1), 1:MAX(n,1), 1:k) => a1
+        bn(1:MAX(ldo,1), 1:MAX(n,1), 1:k) => b1
 
         !$OMP PARALLEL DO DEFAULT(NONE) PRIVATE(h, i, j)                &
         !$OMP   SHARED(n, k, ldi, ldo, an, bn)
@@ -117,7 +122,9 @@
      &        C_LOC(an(1,1,h)), S, m, n, ldi, ldo)
           END DO
           d = libxs_timer_duration(start, libxs_timer_tick())
-          IF (0 .GE. d) THEN; error = 1; EXIT; END IF
+          IF (0 .LT. nbytes .AND. 0 .GE. d) THEN
+            error = 1; EXIT
+          END IF
           IF (1 .LT. i) duration(1) = duration(1) + d
           WRITE(*, "(A,A10,F12.1,A,F12.1,A)")                           &
      &      "LIBXS  ", "(copy): ", 1D3 * d, " ms ",                     &
@@ -130,7 +137,9 @@
             bn(1:m, :, h) = an(1:m, :, h)
           END DO
           d = libxs_timer_duration(start, libxs_timer_tick())
-          IF (0 .GE. d) THEN; error = 2; EXIT; END IF
+          IF (0 .LT. nbytes .AND. 0 .GE. d) THEN
+            error = 2; EXIT
+          END IF
           IF (1 .LT. i) duration(2) = duration(2) + d
           WRITE(*, "(A,A10,F12.1,A,F12.1,A)")                           &
      &      "Fortran", "(copy): ", 1D3 * d, " ms ",                     &
@@ -148,7 +157,9 @@
             !$OMP END PARALLEL
           END DO
           d = libxs_timer_duration(start, libxs_timer_tick())
-          IF (0 .GE. d) THEN; error = 3; EXIT; END IF
+          IF (0 .LT. nbytes .AND. 0 .GE. d) THEN
+            error = 3; EXIT
+          END IF
           IF (1 .LT. i) duration(3) = duration(3) + d
           WRITE(*, "(A,A10,F12.1,A,F12.1,A)")                           &
      &      "LIBXS  ", "(cpyt): ", 1D3 * d, " ms ",                     &
@@ -162,7 +173,9 @@
      &        C_NULL_PTR, S, m, n, ldi, ldo)
           END DO
           d = libxs_timer_duration(start, libxs_timer_tick())
-          IF (0 .GE. d) THEN; error = 4; EXIT; END IF
+          IF (0 .LT. nbytes .AND. 0 .GE. d) THEN
+            error = 4; EXIT
+          END IF
           IF (1 .LT. i) duration(4) = duration(4) + d
           WRITE(*, "(A,A10,F12.1,A,F12.1,A)")                           &
      &      "LIBXS  ", "(zero): ", 1D3 * d, " ms ",                     &
@@ -175,7 +188,9 @@
             bn(1:m, :, h) = REAL(0, T)
           END DO
           d = libxs_timer_duration(start, libxs_timer_tick())
-          IF (0 .GE. d) THEN; error = 5; EXIT; END IF
+          IF (0 .LT. nbytes .AND. 0 .GE. d) THEN
+            error = 5; EXIT
+          END IF
           IF (1 .LT. i) duration(5) = duration(5) + d
           WRITE(*, "(A,A10,F12.1,A,F12.1,A)")                           &
      &      "Fortran", "(zero): ", 1D3 * d, " ms ",                     &
@@ -193,7 +208,9 @@
             !$OMP END PARALLEL
           END DO
           d = libxs_timer_duration(start, libxs_timer_tick())
-          IF (0 .GE. d) THEN; error = 6; EXIT; END IF
+          IF (0 .LT. nbytes .AND. 0 .GE. d) THEN
+            error = 6; EXIT
+          END IF
           IF (1 .LT. i) duration(6) = duration(6) + d
           WRITE(*, "(A,A10,F12.1,A,F12.1,A)")                           &
      &      "LIBXS  ", "(zerot): ", 1D3 * d, " ms ",                    &
@@ -209,7 +226,9 @@
      &          C_LOC(an(1,1,h)), S, m, n, ldi, ldo)
             END DO
             d = libxs_timer_duration(start, libxs_timer_tick())
-            IF (0 .GE. d) THEN; error = 7; EXIT; END IF
+            IF (0 .LT. nbytes .AND. 0 .GE. d) THEN
+              error = 7; EXIT
+            END IF
             IF (1 .LT. i) duration(7) = duration(7) + d
             WRITE(*, "(A,A10,F12.1,A,F12.1,A)")                         &
      &        "LIBXS  ", "(trans): ", 1D3 * d, " ms ",                  &
@@ -222,7 +241,9 @@
               bn(1:n, 1:m, h) = TRANSPOSE(an(1:m, 1:n, h))
             END DO
             d = libxs_timer_duration(start, libxs_timer_tick())
-            IF (0 .GE. d) THEN; error = 8; EXIT; END IF
+            IF (0 .LT. nbytes .AND. 0 .GE. d) THEN
+              error = 8; EXIT
+            END IF
             IF (1 .LT. i) duration(8) = duration(8) + d
             WRITE(*, "(A,A10,F12.1,A,F12.1,A)")                         &
      &        "Fortran", "(trans): ", 1D3 * d, " ms ",                  &
@@ -240,7 +261,9 @@
               !$OMP END PARALLEL
             END DO
             d = libxs_timer_duration(start, libxs_timer_tick())
-            IF (0 .GE. d) THEN; error = 9; EXIT; END IF
+            IF (0 .LT. nbytes .AND. 0 .GE. d) THEN
+              error = 9; EXIT
+            END IF
             IF (1 .LT. i) duration(9) = duration(9) + d
             WRITE(*, "(A,A10,F12.1,A,F12.1,A)")                         &
      &        "LIBXS  ", "(transt): ", 1D3 * d, " ms ",                 &
