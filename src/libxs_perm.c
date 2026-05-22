@@ -12,16 +12,17 @@
 #include <libxs_malloc.h>
 #include "libxs_main.h"
 
-#define LIBXS_MEM_SHUFFLE_COPRIME(N) libxs_coprime2(N)
 #define LIBXS_MEM_SHUFFLE_MALLOC(SIZE, POOL) \
   internal_libxs_scratch_malloc(SIZE, &(POOL))
 #define LIBXS_MEM_SHUFFLE_FREE(PTR, POOL) \
   internal_libxs_scratch_free(PTR, POOL)
+
+#define LIBXS_MEM_SHUFFLE_COPRIME(N) libxs_coprime2(N)
 #define LIBXS_MEM_SHUFFLE(INOUT, ELEMSIZE, COUNT, SHUFFLE, OFFSET, NREPEAT) do { \
   unsigned char *const LIBXS_RESTRICT shfl_data = (unsigned char*)(INOUT); \
   const size_t shfl_count = (COUNT), shfl_stride = (SHUFFLE); \
   const size_t shfl_off = (OFFSET) % shfl_count; \
-  const size_t shfl_last = shfl_count - 1, shfl_nrep = (NREPEAT); \
+  const size_t shfl_nrep = (NREPEAT); \
   const size_t shfl_nbitmask = (shfl_count + 7) / 8; \
   int shfl_pool_v = 0, shfl_pool_t = 0; \
   unsigned char *const shfl_visited = (unsigned char*) \
@@ -36,7 +37,7 @@
         if (0 != (shfl_visited[shfl_i / 8] & (1u << (shfl_i % 8)))) continue; \
         shfl_src = shfl_i; \
         for (shfl_k = 0; shfl_k < shfl_nrep; ++shfl_k) { \
-          shfl_src = shfl_last - ((shfl_stride * shfl_src + shfl_off) % shfl_count); \
+          shfl_src = LIBXS_SHUFFLE_INDEX(shfl_src, shfl_count, shfl_stride, shfl_off); \
         } \
         if (shfl_src == shfl_i) { \
           shfl_visited[shfl_i / 8] |= (unsigned char)(1u << (shfl_i % 8)); \
@@ -47,7 +48,7 @@
         do { \
           shfl_src = shfl_dst; \
           for (shfl_k = 0; shfl_k < shfl_nrep; ++shfl_k) { \
-            shfl_src = shfl_last - ((shfl_stride * shfl_src + shfl_off) % shfl_count); \
+            shfl_src = LIBXS_SHUFFLE_INDEX(shfl_src, shfl_count, shfl_stride, shfl_off); \
           } \
           shfl_visited[shfl_dst / 8] |= (unsigned char)(1u << (shfl_dst % 8)); \
           if (shfl_src != shfl_i) { \
@@ -287,7 +288,7 @@ LIBXS_API void libxs_sort(void* base, int n, size_t size,
   {
     const void* src = (NULL != ctx) ? ctx : base;
     int pool = 0;
-    void* scratch = internal_libxs_scratch_malloc((size_t)n * size, &pool);
+    void* scratch = LIBXS_MEM_SHUFFLE_MALLOC((size_t)n * size, pool);
     if (NULL != scratch) {
       if (cmp == libxs_cmp_f64) {
         internal_libxs_sort_radix_f64(
@@ -305,7 +306,7 @@ LIBXS_API void libxs_sort(void* base, int n, size_t size,
         internal_libxs_sort_radix_u32(
           (unsigned int*)base, (const unsigned int*)src, n, scratch);
       }
-      internal_libxs_scratch_free(scratch, pool);
+      LIBXS_MEM_SHUFFLE_FREE(scratch, pool);
     }
     else {
       if (NULL != ctx) memcpy(base, ctx, (size_t)n * size);
@@ -741,8 +742,8 @@ LIBXS_API int libxs_sort_smooth(libxs_sort_t method, int m, int n,
     char* visited = NULL;
 
     if (LIBXS_SORT_IDENTITY != method) {
-      scores = (double*)internal_libxs_scratch_malloc(
-        scores_size + visited_size, &pool);
+      scores = (double*)LIBXS_MEM_SHUFFLE_MALLOC(
+        scores_size + visited_size, pool);
       if (NULL == scores) return EXIT_FAILURE;
       if (0 != visited_size) visited = (char*)(scores + m);
     }
@@ -817,7 +818,7 @@ LIBXS_API int libxs_sort_smooth(libxs_sort_t method, int m, int n,
       }
     }
 
-    internal_libxs_scratch_free(scores, pool);
+    LIBXS_MEM_SHUFFLE_FREE(scores, pool);
   }
   return result;
 }
@@ -949,11 +950,10 @@ LIBXS_API int libxs_shuffle2(void* dst, const void* src, size_t elemsize, size_t
       }
     }
     else if (0 != *nrepeat) { /* generic path */
-      const size_t c = count - 1;
       const size_t off = offset % count;
       for (i = 0; i < count; ++i) {
         size_t k = 0;
-        for (j = i; k < *nrepeat; ++k) j = c - ((s * j + off) % count);
+        for (j = i; k < *nrepeat; ++k) j = LIBXS_SHUFFLE_INDEX(j, count, s, off);
         memcpy(out + elemsize * i, inp + elemsize * j, elemsize);
       }
     }
@@ -1034,11 +1034,10 @@ LIBXS_API int libxs_unshuffle2(void* dst, const void* src, size_t elemsize, size
       }
     }
     else if (0 != *nrepeat) {
-      const size_t c = count - 1;
       const size_t off = offset % count;
       for (; i < count; ++i) {
         size_t k = 0, j = i;
-        for (; k < *nrepeat; ++k) j = (si * ((c - j - off + count) % count)) % count;
+        for (; k < *nrepeat; ++k) j = LIBXS_UNSHUFFLE_INDEX(j, count, si, off);
         memcpy(out + elemsize * i, inp + elemsize * j, elemsize);
       }
     }
