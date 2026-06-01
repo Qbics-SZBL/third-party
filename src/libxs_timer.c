@@ -24,7 +24,6 @@ LIBXS_API int libxs_timer_info(libxs_timer_info_t* info)
     if (0 < libxs_timer_scale) {
       info->tsc = 1;
     }
-# if !defined(LIBXS_INIT_COMPLETED)
     else if (2 > libxs_ninit) {
       libxs_init();
       if (0 < libxs_timer_scale) {
@@ -34,7 +33,6 @@ LIBXS_API int libxs_timer_info(libxs_timer_info_t* info)
         info->tsc = 0;
       }
     }
-# endif
     else {
       info->tsc = 0;
     }
@@ -65,7 +63,6 @@ LIBXS_API libxs_timer_tick_t libxs_timer_tick(void)
   if (0 < libxs_timer_scale) {
     LIBXS_TIMER_RDTSC(result);
   }
-# if !defined(LIBXS_INIT_COMPLETED)
   else if (2 > libxs_ninit) {
     libxs_init();
     if (0 < libxs_timer_scale) {
@@ -75,7 +72,6 @@ LIBXS_API libxs_timer_tick_t libxs_timer_tick(void)
       result = internal_libxs_timer_tick_rtc();
     }
   }
-# endif
   else {
     result = internal_libxs_timer_tick_rtc();
   }
