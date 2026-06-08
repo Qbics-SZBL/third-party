@@ -106,6 +106,7 @@ LIBXS_EXTERN_C struct libxs_predict_t {
   int nseries, window, target, decompose;
   int nts, ts_capacity;
   int diff_mode, diff_order;
+  int distill_method, distill_keep;
   int refine;
   volatile int phase;
 };
@@ -406,6 +407,7 @@ LIBXS_API libxs_predict_t* libxs_predict_create(int ninputs, int noutputs)
       model->noutputs = noutputs;
       model->eval_mode = LIBXS_PREDICT_AUTO;
       model->diff_mode = -1;
+      model->distill_keep = 0;
     }
   }
   return model;
@@ -557,6 +559,17 @@ LIBXS_API void libxs_predict_set_diff(libxs_predict_t* model, int order)
   LIBXS_ASSERT(NULL != model);
   if (NULL != model) {
     model->diff_mode = order;
+  }
+}
+
+
+LIBXS_API void libxs_predict_set_distill(libxs_predict_t* model,
+  int method, int keep_denom)
+{
+  LIBXS_ASSERT(NULL != model);
+  if (NULL != model) {
+    model->distill_method = method;
+    model->distill_keep = (keep_denom > 0) ? keep_denom : 1;
   }
 }
 
@@ -1121,11 +1134,17 @@ LIBXS_API_INLINE double internal_libxs_predict_order_fn(
 }
 
 
+#include "libxs_predict_distill.h"
+
+
 LIBXS_API int libxs_predict_build(libxs_predict_t* model, int nclusters, int order)
 {
   int result = EXIT_SUCCESS;
   if (NULL != model && 0 < model->nts && 0 == model->nentries) {
     internal_libxs_predict_ts_expand(model);
+  }
+  if (NULL != model && model->distill_keep > 0 && model->nentries > 1) {
+    internal_libxs_predict_distill(model, nclusters, order);
   }
   if (NULL != model && 0 < model->nentries && NULL == model->decompose_mat
     && (LIBXS_PREDICT_PCA == model->decompose
