@@ -117,6 +117,7 @@ LIBXS_EXTERN_C struct libxs_predict_t {
   int refine;
   double smooth;
   double quality;
+  double consistency;
   volatile int phase;
 };
 
@@ -633,6 +634,14 @@ LIBXS_API void libxs_predict_set_smooth(libxs_predict_t* model, double amount)
 {
   LIBXS_ASSERT(NULL != model);
   model->smooth = amount;
+}
+
+
+LIBXS_API void libxs_predict_set_consistency(
+  libxs_predict_t* model, double amount)
+{
+  LIBXS_ASSERT(NULL != model);
+  model->consistency = amount;
 }
 
 
@@ -1980,6 +1989,14 @@ LIBXS_API void libxs_predict_eval(libxs_lock_t* lock, const libxs_predict_t* mod
                       vals[j] = refined[j];
                       conf[j] = rconf[j];
                     }
+                  }
+                }
+                else if (model->consistency > 0) {
+                  const double q = model->quality;
+                  const double s = 1.0
+                    / (1.0 + model->consistency * rt_dist / rcl->dmax);
+                  for (j = 0; j < n; ++j) {
+                    conf[j] = q + s * (conf[j] - q);
                   }
                 }
               }
