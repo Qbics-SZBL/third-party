@@ -31,3 +31,5 @@ drwxr-xr-x 34 1.1K Jun 30 10:21 eigen-3.4.0
 -rw-r--r--  1 472M Jun 16 10:05 plumed-2.9.2-src.tar
 -rw-r--r--  1  17M Jun 16 10:05 xtb-6.5.0-src.tar
 ```
+
+* <https://github.com/Qbics-SZBL/third-party/releases/download/v0/third-party.tar.zst>
