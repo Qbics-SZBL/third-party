@@ -1,0 +1,39 @@
+env:
+  LIBXSMM_VERBOSE: 4
+  SYM: 2
+
+steps:
+  - label: "GEMM"
+    command: "scripts/tool_test.sh samples/xgemm/kernel_test.sh"
+    agents:
+      queue: "rv64"
+
+#  - label: "BCSC SPMM"
+#    command: "scripts/tool_test.sh samples/xgemm_sparse/kernel_test.sh"
+#    agents:
+#      queue: "rv64"
+
+  - label: "ELTWISE"
+    command: "scripts/tool_test.sh samples/eltwise/run_test.sh"
+    agents:
+      queue: "rv64"
+
+#  - label: "EQUATION"
+#    command: "scripts/tool_test.sh samples/equation/run_test.sh"
+#    agents:
+#      queue: "aarch64"
+
+  - label: "Test #4"
+    command: "scripts/tool_test.sh 4"
+    agents:
+      queue: "rv64"
+
+#  - label: "Test #6"
+#    command: "scripts/tool_test.sh 6"
+#    agents:
+#      queue: "rv64"
+
+  - label: "Fortran"
+    command: "scripts/tool_test.sh 5"
+    agents:
+      queue: "rv64"

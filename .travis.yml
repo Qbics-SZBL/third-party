@@ -1,0 +1,54 @@
+# avoid any dashes at the begin of a line within a test section
+script:
+  - make -e ${MAKEJ} ${PEDANTIC_HIGH} TRACE=1 STATIC=0 BLAS=1 ABSLIBS=1 MIX=0
+      EFLAGS="-DITYPE=double -DINCLUDE_LIBXSMM_LAST" ${INSTALL} tests
+
+  - make -e ${MAKEJ} ${PEDANTIC_HIGH} TRACE=1 MNK="19 27, 23"
+      ${INSTALL} tests
+
+  - make -e ${MAKEJ} ${PEDANTIC_HIGH} MNK="4 8" STATIC=0 PREFETCH=0 CACHE=0
+      EFLAGS="-DLIBXSMM_NO_CTOR -DINCLUDE_LIBXSMM_LAST" ${INSTALL} tests
+
+  - make -e ${MAKEJ} ${PEDANTIC_HIGH} STATIC=0
+      EFLAGS="-DLIBXSMM_NO_CTOR -DINCLUDE_LIBXSMM_LAST" ${INSTALL} tests
+
+  - make -e ${MAKEJ} ${PEDANTIC_HIGH} MNK="9 3, 23" STATIC=0
+      EFLAGS="-DLIBXSMM_MALLOC_MMAP" ${INSTALL} test-smm
+
+  - make -e ${MAKEJ} ${PEDANTIC_HIGH} INTRINSICS=1 MIX=0
+      EFLAGS="-DELEM_TYPE=char -DUSE_EXPECTED" ${INSTALL} tests
+
+  - make -e ${MAKEJ} ${PEDANTIC_HIGH}
+      EFLAGS="-DELEM_TYPE=short" ${INSTALL} tests
+
+  - if [ "${STATIC_ANALYSIS}" ] && [ "0" != "${STATIC_ANALYSIS}" ]; then
+      ${TRAVIS_BUILD_DIR}/scripts/tool_analyze.sh;
+    fi
+
+  - if [ "${STATIC_ANALYSIS}" ] && [ "0" != "${STATIC_ANALYSIS}" ]; then
+      ${TRAVIS_BUILD_DIR}/scripts/tool_normalize.sh;
+    fi
+
+  - if [ "${STATIC_ANALYSIS}" ] && [ "0" != "${STATIC_ANALYSIS}" ]; then
+      make -e ${MAKEJ} STATIC=0 DBG=1 && ${TRAVIS_BUILD_DIR}/scripts/tool_checkabi.sh;
+    fi
+
+  - if [ "${STATIC_ANALYSIS}" ] && [ "0" != "${STATIC_ANALYSIS}" ]; then
+      if [ ! "${COVERITY_SCAN_BINDIR}" ] || [ ! "${COVERITY_SCAN_USER}" ] || [ ! "${COVERITY_SCAN_TOKEN}" ]; then
+        echo "Please setup COVERITY_SCAN_BINDIR, COVERITY_SCAN_USER, and COVERITY_SCAN_TOKEN.";
+        exit 1;
+      fi;
+      if [ "${COVERITY_SCAN_TMPDIR_CLEAR}" ] && [ "0" != "${COVERITY_SCAN_TMPDIR_CLEAR}" ] &&
+         [ "." != ""${COVERITY_SCAN_TMPDIR}"" ] && [ -e "${COVERITY_SCAN_TMPDIR}" ];
+      then
+        rm -rf "${COVERITY_SCAN_TMPDIR}";
+      fi;
+      ${COVERITY_SCAN_BINDIR}/cov-build --dir ${COVERITY_SCAN_TMPDIR} make -e ${MAKEJ} &&
+      tar cvfz "${COVERITY_SCAN_TGZDIR}/cov-int.tgz" -C "$(dirname "${COVERITY_SCAN_TMPDIR}")" --transform
+        "s/^$(basename "${COVERITY_SCAN_TMPDIR}")/cov-int/" $(basename ${COVERITY_SCAN_TMPDIR}) &&
+      curl https://scan.coverity.com/builds?project=hfp-libxsmm --form
+        token=${COVERITY_SCAN_TOKEN} --form email=${COVERITY_SCAN_USER} --form
+        file=@${COVERITY_SCAN_TGZDIR}/cov-int.tgz --form
+        version="$(${TRAVIS_BUILD_DIR}/scripts/tool_version.sh)" --form
+        description="$(date -I): $(git log -1 --pretty=oneline | cut -d' ' -f2-)";
+    fi
