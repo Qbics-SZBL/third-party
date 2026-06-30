@@ -1,0 +1,19 @@
+# ls -lg third-party
+total 1033560
+drwxr-xr-x 21       672 Jun 16 10:05 boost_1_78_0
+-rw-r--r--  1   2723840 Jun 16 10:05 dftd3-0.9-src.tar
+-rw-r--r--  1   6451200 Jun 16 10:05 dl-find-src.tar
+drwxr-xr-x 33      1056 Jun 16 10:05 eigen-3.4.0
+-rw-r--r--  1  27473920 Jun 16 10:05 fftw-3.3.10-src.tar
+-rw-r--r--  1  39624970 Jun 16 10:05 hdf5-hdf5_1.14.6-src.tar.gz
+-rw-r--r--  1 270684160 Jun 16 10:05 libxc-6.2.2-src.tar
+-rw-r--r--  1 191170560 Jun 16 10:05 OpenBLAS-0.3.28-src.tar
+-rw-r--r--  1 494510080 Jun 16 10:05 plumed-2.9.2-src.tar
+-rw-r--r--  1   7587273 Jun 30 09:39 third-party.sha1
+-rw-r--r--  1  17264640 Jun 16 10:05 xtb-6.5.0-src.tar
+
+# tar -cf third-party.tar third-party
+# zstd -9k third-party.tar
+-rw-r--r-- 1 1830553600 Jun 30 09:56 third-party.tar
+-rw-r--r-- 1  298055719 Jun 30 09:56 third-party.tar.zst
+

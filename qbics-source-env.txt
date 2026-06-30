@@ -1,0 +1,39 @@
+#  du -h --max-depth=2 qbics-source-env | sort -hr
+2.3G	qbics-source-env
+1.9G	qbics-source-env/third-party
+823M	qbics-source-env/third-party/boost_1_78_0
+436M	qbics-source-env/qbics-source
+257M	qbics-source-env/qbics-source/.git
+173M	qbics-source-env/qbics-source/src
+20M	qbics-source-env/third-party/eigen-3.4.0
+6.4M	qbics-source-env/qbics-source/bin
+152K	qbics-source-env/qbics-source/tools
+12K	qbics-source-env/qbics-source/.vscode
+0	qbics-source-env/qbics-source/build
+0	qbics-source-env/qbics-Release
+
+# tree -L 2 --du -n qbics-source-env
+[ 1049938117]  qbics-source-env
+├── [       7117]  build-qbics.sh
+├── [         64]  qbics-Release
+├── [      25262]  qbics-source
+│   ├── [        224]  bin
+│   ├── [        256]  build
+│   ├── [       8586]  Makefile
+│   ├── [        729]  README.md
+│   ├── [        896]  src
+│   ├── [        224]  tools
+│   └── [      13963]  x.inp
+└── [ 1049905482]  third-party
+    ├── [        672]  boost_1_78_0
+    ├── [    2723840]  dftd3-0.9-src.tar
+    ├── [    6451200]  dl-find-src.tar
+    ├── [       1056]  eigen-3.4.0
+    ├── [   27473920]  fftw-3.3.10-src.tar
+    ├── [   39624970]  hdf5-hdf5_1.14.6-src.tar.gz
+    ├── [  270684160]  libxc-6.2.2-src.tar
+    ├── [  191170560]  OpenBLAS-0.3.28-src.tar
+    ├── [  494510080]  plumed-2.9.2-src.tar
+    └── [   17264640]  xtb-6.5.0-src.tar
+
+  1049938117 bytes used in 10 directories, 12 files
