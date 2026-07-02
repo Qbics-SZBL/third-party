@@ -1,0 +1,71 @@
+---
+name: Generating documentation
+on:
+  push:
+    branches:
+    - 'develop'
+    tags:
+    - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/cp2k/dbcsr-build-env-ubuntu-22.04:develop
+      volumes:
+      - "/etc/ssh/ssh_known_hosts:/etc/ssh/ssh_known_hosts:ro"
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: true
+
+    - name: Configure
+      run: |
+        mkdir -p build
+        cd build
+        cmake -G Ninja \
+          -DUSE_MPI=ON \
+          -DBUILD_TESTING=ON \
+          -DUSE_OPENMP=ON \
+          -DMPI_EXECUTABLE_SUFFIX=.mpich \
+          ..
+
+    - name: Build
+      run: |
+        cmake --build build -- doc
+        touch build/doc/.nojekyll
+
+    - name: Configure git to trust the workspace despite the different owner
+      run:
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+    - name: Deploy Development Documentation
+      if: github.repository == 'cp2k/dbcsr' && github.ref == 'refs/heads/develop'
+      uses: JamesIves/github-pages-deploy-action@releases/v4
+      with:
+        branch: gh-pages
+        folder: build/doc
+        target-folder: develop
+        clean: true
+        clean-exclude: |
+          releases/
+        ssh-key: ${{ secrets.SSH_DEPLOY_KEY }}
+
+    - name: Get the release version
+      id: get_version
+      run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\/v/}
+      shell: bash
+
+    - name: Deploy Release Documentation
+      if: github.repository == 'cp2k/dbcsr' && contains(github.ref, 'tags')
+      uses: JamesIves/github-pages-deploy-action@releases/v4
+      with:
+        branch: gh-pages
+        folder: build/doc
+        target-folder: 'releases/v${{ steps.get_version.outputs.VERSION }}'
+        ssh-key: ${{ secrets.SSH_DEPLOY_KEY }}
+
+#  vim: set ts=2 sw=2 tw=0 :

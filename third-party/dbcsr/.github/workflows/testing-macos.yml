@@ -1,0 +1,59 @@
+---
+name: Testing on macOS
+on:
+  push:
+    branches:
+    - 'develop'
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+
+    strategy:
+      matrix:
+        use_mpi: [MPI=ON]
+        use_openmp: [OPENMP=ON]
+        blas_impl: [accelerate,openblas]
+        mpi_suffix: [mpich] # Brew openmpi doesn't provide mpi.mod
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: true
+
+    - name: Install common dependencies
+      run: |
+        env HOMEBREW_NO_AUTO_UPDATE=1 brew install \
+          ninja
+
+    - name: Install ${{ matrix.mpi_suffix }}
+      run: |
+        env HOMEBREW_NO_AUTO_UPDATE=1 brew install ${{ matrix.mpi_suffix }}
+
+    - name: Configure
+      run: |
+        mkdir -p build
+        cd build
+        env \
+          CC=gcc-15 CXX=g++-15 FC=gfortran-15 \
+          cmake -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_TESTING=ON \
+          -DUSE_${{ matrix.use_mpi }} \
+          -DUSE_${{ matrix.use_openmp }} \
+          $([ "${{ matrix.blas_impl }}" = "openblas" ] && echo '-DCMAKE_PREFIX_PATH=/usr/local/opt/openblas') \
+          -DMPIEXEC_PREFLAGS="$([ "${{ matrix.mpi_suffix }}" = "openmpi" ] && echo "-mca btl ^openib --allow-run-as-root")" \
+          -DTEST_MPI_RANKS=auto \
+          ..
+
+    - name: Build
+      run: cmake --build build -- --verbose
+
+    - name: Test
+      run: |
+        cd build
+        ctest --output-on-failure
+
+#  vim: set ts=2 sw=2 tw=0 :
