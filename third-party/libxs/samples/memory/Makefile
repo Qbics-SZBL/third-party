@@ -1,0 +1,143 @@
+ROOTDIR = $(abspath $(dir $(firstword $(MAKEFILE_LIST))))
+PROJECT := libxs
+DEPDIR = ../..
+SRCDIR = .
+INCDIR = .
+BLDDIR = obj
+OUTDIR = .
+
+CXXFLAGS = $(NULL)
+CFLAGS = $(NULL)
+DFLAGS = $(NULL)
+
+BLAS = 0
+OMP = 1
+SYM = 1
+
+# include common Makefile artifacts
+include $(DEPDIR)/Makefile.inc
+
+# header-only when library is not (yet) built
+ifeq (,$(XLIB))
+ifneq (,$(wildcard $(DEPDIR)/libxs/libxs_source.h))
+  DFLAGS += -DLIBXS_SOURCE
+  HEADERONLY = 1
+endif
+endif
+
+# include directories
+IFLAGS += -I$(call quote,$(INCDIR))
+IFLAGS += -I$(call quote,$(DEPDIR))
+IFLAGS += -I$(call quote,$(DEPDIR)/libxs)
+
+OUTNAME := $(shell basename "$(ROOTDIR)")
+HEADERS := $(wildcard $(INCDIR)/*.h) $(wildcard $(INCDIR)/*.hpp) $(wildcard $(INCDIR)/*.hxx) $(wildcard $(INCDIR)/*.hh) \
+           $(wildcard $(SRCDIR)/*.h) $(wildcard $(SRCDIR)/*.hpp) $(wildcard $(SRCDIR)/*.hxx) $(wildcard $(SRCDIR)/*.hh) \
+           $(DEPDIR)/libxs/libxs_source.h
+CPPSRCS := $(wildcard $(SRCDIR)/*.cpp)
+CXXSRCS := $(wildcard $(SRCDIR)/*.cxx)
+CCXSRCS := $(wildcard $(SRCDIR)/*.cc)
+CSOURCS := $(wildcard $(SRCDIR)/*.c)
+CPPOBJS := $(patsubst %,$(BLDDIR)/%,$(notdir $(CPPSRCS:.cpp=-cpp.o)))
+CXXOBJS := $(patsubst %,$(BLDDIR)/%,$(notdir $(CXXSRCS:.cxx=-cxx.o)))
+CCXOBJS := $(patsubst %,$(BLDDIR)/%,$(notdir $(CCXSRCS:.cc=-cc.o)))
+COBJCTS := $(patsubst %,$(BLDDIR)/%,$(notdir $(CSOURCS:.c=-c.o)))
+ifneq (1,$(HEADERONLY))
+ifneq (,$(strip $(FC)))
+FXXSRCS := $(wildcard $(SRCDIR)/*.f)
+F77SRCS := $(wildcard $(SRCDIR)/*.F)
+F90SRCS := $(wildcard $(SRCDIR)/*.f90) $(wildcard $(SRCDIR)/*.F90)
+FXXOBJS := $(patsubst %,$(BLDDIR)/%,$(notdir $(FXXSRCS:.f=-f.o)))
+F77OBJS := $(patsubst %,$(BLDDIR)/%,$(notdir $(F77SRCS:.F=-f77.o)))
+F90OBJS := $(patsubst %,$(BLDDIR)/%,$(notdir $(F90SRCS:.f90=-f90.o)))
+F90OBJS := $(patsubst %,$(BLDDIR)/%,$(notdir $(F90OBJS:.F90=-f90.o)))
+endif
+endif
+SOURCES := $(CPPSRCS) $(CXXSRCS) $(CCXSRCS) $(CSOURCS)
+OBJECTS := $(CPPOBJS) $(CXXOBJS) $(CCXOBJS) $(COBJCTS)
+FTNSRCS := $(FXXSRCS) $(F77SRCS) $(F90SRCS)
+MODULES := $(addsuffix .mod,$(basename $(FTNSRCS)))
+FTNOBJS := $(FXXOBJS) $(F77OBJS) $(F90OBJS)
+MCMOBJS := $(filter-out $(BLDDIR)/memcmp%,$(FTNOBJS))
+MCPOBJS := $(filter-out $(BLDDIR)/matcpy%,$(FTNOBJS))
+MCPOBJS := $(filter-out $(BLDDIR)/memory%,$(MCPOBJS))
+MCOBJS := $(filter-out $(BLDDIR)/itrans%,$(OBJECTS))
+ITOBJS := $(filter $(BLDDIR)/itrans%,$(OBJECTS))
+XFILES := $(OUTDIR)/memcmp.x $(OUTDIR)/itrans.x $(OUTDIR)/memcmpf.x $(OUTDIR)/matcpyf.x
+
+.PHONY: all
+all: $(XFILES)
+
+.PHONY: compile
+compile: $(OBJECTS) $(FTNOBJS)
+
+ifneq (1,$(HEADERONLY))
+ifneq (,$(strip $(FC)))
+ifneq (0,$(shell echo "$$((3>$(XSMM_GCC) || 40600<=$(FC_VERSION_NUM)))"))
+$(OUTDIR)/memcmpf.x: $(OUTDIR)/.make $(MCPOBJS) $(XLIB)
+	$(FLD) -o $@ $(MCPOBJS) $(XLIB) $(FCMTFLAGS) $(SLDFLAGS) $(LDFLAGS) $(FLDFLAGS) $(ELDFLAGS)
+
+$(OUTDIR)/matcpyf.x: $(OUTDIR)/.make $(MCMOBJS) $(XLIB)
+	$(FLD) -o $@ $(MCMOBJS) $(XLIB) $(FCMTFLAGS) $(SLDFLAGS) $(LDFLAGS) $(FLDFLAGS) $(ELDFLAGS)
+else
+.PHONY: $(OUTDIR)/memcmpf.x
+.PHONY: $(OUTDIR)/matcpyf.x
+endif
+else
+.PHONY: $(OUTDIR)/memcmpf.x
+.PHONY: $(OUTDIR)/matcpyf.x
+endif
+else
+.PHONY: $(OUTDIR)/memcmpf.x
+.PHONY: $(OUTDIR)/matcpyf.x
+endif
+
+$(OUTDIR)/memcmp.x: $(OUTDIR)/.make $(MCOBJS) $(XLIB)
+	$(LD) -o $@ $(MCOBJS) $(XLIB) $(SLDFLAGS) $(LDFLAGS) $(CLDFLAGS)
+
+$(OUTDIR)/itrans.x: $(OUTDIR)/.make $(ITOBJS) $(XLIB)
+	$(LD) -o $@ $(ITOBJS) $(XLIB) $(SLDFLAGS) $(LDFLAGS) $(CLDFLAGS)
+
+$(BLDDIR)/%-cpp.o: $(SRCDIR)/%.cpp .state $(BLDDIR)/.make $(HEADERS) Makefile $(DEPDIR)/Makefile.inc
+	$(CXX) $(DFLAGS) $(IFLAGS) $(CXXFLAGS) $(CTARGET) -c $< -o $@
+
+$(BLDDIR)/%-c.o: $(SRCDIR)/%.c .state $(BLDDIR)/.make $(HEADERS) Makefile $(DEPDIR)/Makefile.inc
+	$(CC) $(DFLAGS) $(IFLAGS) $(CFLAGS) $(CTARGET) -c $< -o $@
+
+$(BLDDIR)/%-f.o: $(SRCDIR)/%.f .state $(BLDDIR)/.make Makefile $(DEPDIR)/Makefile.inc
+	$(FC) $(FCMTFLAGS) $(DFLAGS) $(IFLAGS) $(FCFLAGS) $(FTARGET) -c $< -o $@
+
+$(BLDDIR)/%-f90.o: $(SRCDIR)/%.f90 .state $(BLDDIR)/.make Makefile $(DEPDIR)/Makefile.inc
+	$(FC) $(FCMTFLAGS) $(DFLAGS) $(IFLAGS) $(FCFLAGS) $(FTARGET) -c $< -o $@
+
+$(BLDDIR)/%-f90.o: $(SRCDIR)/%.F90 .state $(BLDDIR)/.make Makefile $(DEPDIR)/Makefile.inc
+	$(FC) $(FCMTFLAGS) $(DFLAGS) $(IFLAGS) $(FCFLAGS) $(FTARGET) -c $< -o $@
+
+$(BLDDIR)/%-f77.o: $(SRCDIR)/%.F .state $(BLDDIR)/.make Makefile $(DEPDIR)/Makefile.inc
+	$(FC) $(FCMTFLAGS) $(DFLAGS) $(IFLAGS) $(FCFLAGS) $(FTARGET) -c $< -o $@
+
+.PHONY: clean
+clean:
+ifneq ($(call qapath,$(BLDDIR)),$(ROOTDIR))
+ifneq ($(call qapath,$(BLDDIR)),$(call qapath,.))
+	@-rm -rf $(BLDDIR)
+endif
+endif
+ifneq (,$(wildcard $(BLDDIR))) # still exists
+	@-rm -f $(OBJECTS) $(FTNOBJS)
+endif
+
+.PHONY: realclean
+realclean: clean
+ifneq ($(call qapath,$(OUTDIR)),$(ROOTDIR))
+ifneq ($(call qapath,$(OUTDIR)),$(call qapath,.))
+	@-rm -rf $(OUTDIR)
+endif
+endif
+ifneq (,$(wildcard $(OUTDIR))) # still exists
+	@-rm -f $(XFILES) $(MODULES)
+endif
+
+.PHONY: deepclean
+deepclean: realclean
+	@-rm -f .make .state

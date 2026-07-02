@@ -1,0 +1,384 @@
+/******************************************************************************
+* Copyright (c) Intel Corporation - All rights reserved.                      *
+* This file is part of the LIBXS library.                                     *
+*                                                                             *
+* For information on the license, see the LICENSE file.                       *
+* Further information: https://github.com/hfp/libxs/                          *
+* SPDX-License-Identifier: BSD-3-Clause                                       *
+******************************************************************************/
+#include <libxs/libxs_source.h>
+
+#if !defined(ELEMTYPE)
+# define ELEMTYPE double
+#endif
+
+
+int main(void)
+{
+  int result = EXIT_SUCCESS;
+  libxs_matdiff_t di[6], diff /*= { 0 }*/;
+  /* http://www.netlib.org/lapack/lug/node75.html */
+  const ELEMTYPE a[] = {
+    (ELEMTYPE)1.00, (ELEMTYPE)2.00, (ELEMTYPE)3.00,
+    (ELEMTYPE)4.00, (ELEMTYPE)5.00, (ELEMTYPE)6.00,
+    (ELEMTYPE)7.00, (ELEMTYPE)8.00, (ELEMTYPE)10.0
+  };
+  const ELEMTYPE b[] = {
+    (ELEMTYPE)0.44, (ELEMTYPE)2.36, (ELEMTYPE)3.04,
+    (ELEMTYPE)3.09, (ELEMTYPE)5.87, (ELEMTYPE)6.66,
+    (ELEMTYPE)7.36, (ELEMTYPE)7.77, (ELEMTYPE)9.07
+  };
+  const ELEMTYPE x[] = {
+    (ELEMTYPE)1.00, (ELEMTYPE)100.0, (ELEMTYPE)9.00
+  };
+  const ELEMTYPE y[] = {
+    (ELEMTYPE)1.10, (ELEMTYPE)99.00, (ELEMTYPE)11.0
+  };
+  const ELEMTYPE r[] = {
+    (ELEMTYPE)0.00, (ELEMTYPE)0.00, (ELEMTYPE)0.00
+  };
+  const ELEMTYPE t[] = {
+    (ELEMTYPE)0.01, (ELEMTYPE)0.02, (ELEMTYPE)0.01
+  };
+
+  /* no need to clear di; just the accumulator (diff) */
+  libxs_matdiff_clear(&diff);
+
+  result = libxs_matdiff(di + 0, LIBXS_DATATYPE(ELEMTYPE), 3/*m*/, 3/*n*/,
+    a/*ref*/, b/*tst*/, NULL/*ldref*/, NULL/*ldtst*/);
+
+  if (EXIT_SUCCESS == result) {
+    const double epsilon = libxs_matdiff_epsilon(di + 0);
+    libxs_matdiff_reduce(&diff, di + 0);
+    /* Epsilon (combined) */
+    if (0.0000001 < LIBXS_ABS(epsilon - 0.1132714)) result = EXIT_FAILURE;
+    /* One-norm */
+    if (0.0000003 < LIBXS_ABS(di[0].norm1_abs - 1.8300000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[0].norm1_rel - 0.0963158)) result = EXIT_FAILURE;
+    /* Infinity-norm */
+    if (0.0000002 < LIBXS_ABS(di[0].normi_abs - 2.4400000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[0].normi_rel - 0.0976000)) result = EXIT_FAILURE;
+    /* Froebenius-norm (relative) */
+    if (0.0000001 < LIBXS_ABS(di[0].normf_rel - 0.1074954)) result = EXIT_FAILURE;
+    /* L2-norm */
+    if (0.0000002 < LIBXS_ABS(di[0].l2_abs - 1.8742465)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[0].l2_rel - 0.6726295)) result = EXIT_FAILURE;
+    /** L1-norm */
+    if (0.0000001 < LIBXS_ABS(di[0].l1_ref - 46.00)) result = EXIT_FAILURE;
+    if (0.0000007 < LIBXS_ABS(di[0].l1_tst - 45.66)) result = EXIT_FAILURE;
+    /* Linf-norm */
+    if (0.0000004 < LIBXS_ABS(di[0].linf_abs - 0.9300000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[0].linf_rel - 0.0930000)) result = EXIT_FAILURE;
+    /* R-squared */
+    if (0.0000001 < LIBXS_ABS(di[0].rsq - 0.9490077)) result = EXIT_FAILURE;
+    /* Location of maximum error */
+    if (2 != di[0].m || 2 != di[0].n) result = EXIT_FAILURE;
+    if (a[3*di[0].m+di[0].n] != di[0].v_ref) result = EXIT_FAILURE;
+    if (b[3*di[0].m+di[0].n] != di[0].v_tst) result = EXIT_FAILURE;
+  }
+
+  if (EXIT_SUCCESS == result) {
+    result = libxs_matdiff(di + 1, LIBXS_DATATYPE(ELEMTYPE), 1/*m*/, 3/*n*/,
+      x/*ref*/, y/*tst*/, NULL/*ldref*/, NULL/*ldtst*/);
+  }
+  if (EXIT_SUCCESS == result) {
+    const double epsilon = libxs_matdiff_epsilon(di + 1);
+    libxs_matdiff_reduce(&diff, di + 1);
+    /* Epsilon (combined) */
+    if (0.0000001 < LIBXS_ABS(epsilon - 0.0223103)) result = EXIT_FAILURE;
+    /* One-norm */
+    if (0.0000001 < LIBXS_ABS(di[1].norm1_abs - 3.1000000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[1].norm1_rel - 0.0281818)) result = EXIT_FAILURE;
+    /* Infinity-norm */
+    if (0.0000001 < LIBXS_ABS(di[1].normi_abs - 2.0000000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[1].normi_rel - 0.0200000)) result = EXIT_FAILURE;
+    /* Froebenius-norm (relative) */
+    if (0.0000001 < LIBXS_ABS(di[1].normf_rel - 0.0222918)) result = EXIT_FAILURE;
+    /** L2-norm */
+    if (0.0000001 < LIBXS_ABS(di[1].l2_abs - 2.2383029)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[1].l2_rel - 0.2438908)) result = EXIT_FAILURE;
+    /** L1-norm */
+    if (0.0000001 < LIBXS_ABS(di[1].l1_ref - 110.00)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[1].l1_tst - 111.10)) result = EXIT_FAILURE;
+    /* Linf-norm */
+    if (0.0000001 < LIBXS_ABS(di[1].linf_abs - 2.0000000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[1].linf_rel - 0.2222222)) result = EXIT_FAILURE;
+    /* R-squared */
+    if (0.0000001 < LIBXS_ABS(di[1].rsq - 0.9991717)) result = EXIT_FAILURE;
+    /* Location of maximum error */
+    if (0 != di[1].m || 2 != di[1].n) result = EXIT_FAILURE;
+    if (x[3*di[1].m+di[1].n] != di[1].v_ref) result = EXIT_FAILURE;
+    if (y[3*di[1].m+di[1].n] != di[1].v_tst) result = EXIT_FAILURE;
+  }
+
+  if (EXIT_SUCCESS == result) {
+    result = libxs_matdiff(di + 2, LIBXS_DATATYPE(ELEMTYPE), 3/*m*/, 1/*n*/,
+      x/*ref*/, y/*tst*/, NULL/*ldref*/, NULL/*ldtst*/);
+  }
+  if (EXIT_SUCCESS == result) {
+    const double epsilon = libxs_matdiff_epsilon(di + 2);
+    libxs_matdiff_reduce(&diff, di + 2);
+    /* Epsilon (combined) */
+    if (0.0000001 < LIBXS_ABS(epsilon - 0.0223103)) result = EXIT_FAILURE;
+    /* One-norm */
+    if (0.0000001 < LIBXS_ABS(di[2].norm1_abs - 3.1000000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[2].norm1_rel - 0.0281818)) result = EXIT_FAILURE;
+    /* Infinity-norm */
+    if (0.0000001 < LIBXS_ABS(di[2].normi_abs - 2.0000000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[2].normi_rel - 0.0200000)) result = EXIT_FAILURE;
+    /* Froebenius-norm (relative) */
+    if (0.0000001 < LIBXS_ABS(di[2].normf_rel - 0.0222918)) result = EXIT_FAILURE;
+    /** L2-norm */
+    if (0.0000001 < LIBXS_ABS(di[2].l2_abs - 2.2383029)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[2].l2_rel - 0.2438908)) result = EXIT_FAILURE;
+    /** L1-norm */
+    if (0.0000001 < LIBXS_ABS(di[2].l1_ref - 110.00)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[2].l1_tst - 111.10)) result = EXIT_FAILURE;
+    /* Linf-norm */
+    if (0.0000001 < LIBXS_ABS(di[2].linf_abs - 2.0000000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[2].linf_rel - 0.2222222)) result = EXIT_FAILURE;
+    /* R-squared */
+    if (0.0000001 < LIBXS_ABS(di[2].rsq - 0.9991717)) result = EXIT_FAILURE;
+    /* Location of maximum error */
+    if (2 != di[2].m || 0 != di[2].n) result = EXIT_FAILURE;
+    if (x[3*di[2].n+di[2].m] != di[2].v_ref) result = EXIT_FAILURE;
+    if (y[3*di[2].n+di[2].m] != di[2].v_tst) result = EXIT_FAILURE;
+  }
+
+  if (EXIT_SUCCESS == result) {
+    result = libxs_matdiff(di + 3, LIBXS_DATATYPE(ELEMTYPE), 3/*m*/, 1/*n*/,
+      r/*ref*/, t/*tst*/, NULL/*ldref*/, NULL/*ldtst*/);
+  }
+  if (EXIT_SUCCESS == result) {
+    const double epsilon = libxs_matdiff_epsilon(di + 3);
+    libxs_matdiff_reduce(&diff, di + 3);
+    /* Epsilon (combined) */
+    if (0.0000001 < LIBXS_ABS(epsilon - 0.0006004)) result = EXIT_FAILURE;
+    /* One-norm */
+    if (0.0000001 < LIBXS_ABS(di[3].norm1_abs - 0.0400000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[3].norm1_rel - 0.0400000)) result = EXIT_FAILURE;
+    /* Infinity-norm */
+    if (0.0000001 < LIBXS_ABS(di[3].normi_abs - 0.0200000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[3].normi_rel - 0.0200000)) result = EXIT_FAILURE;
+    /* Froebenius-norm (relative) */
+    if (0.0000001 < LIBXS_ABS(di[3].normf_rel - 0.0006000)) result = EXIT_FAILURE;
+    /** L2-norm */
+    if (0.0000001 < LIBXS_ABS(di[3].l2_abs - 0.0244949)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[3].l2_rel - 0.0244949)) result = EXIT_FAILURE;
+    /** L1-norm */
+    if (0.0000001 < LIBXS_ABS(di[3].l1_ref - 0.00)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[3].l1_tst - 0.04)) result = EXIT_FAILURE;
+    /* Linf-norm */
+    if (0.0000001 < LIBXS_ABS(di[3].linf_abs - 0.0200000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[3].linf_rel - 0.0200000)) result = EXIT_FAILURE;
+    /* R-squared */
+    if (0.0000001 < LIBXS_ABS(di[3].rsq - 0.9994000)) result = EXIT_FAILURE;
+    /* Location of maximum error */
+    if (1 != di[3].m || 0 != di[3].n) result = EXIT_FAILURE;
+    if (r[3*di[3].n+di[3].m] != di[3].v_ref) result = EXIT_FAILURE;
+    if (t[3*di[3].n+di[3].m] != di[3].v_tst) result = EXIT_FAILURE;
+  }
+
+  if (EXIT_SUCCESS == result) {
+    result = libxs_matdiff(di + 4, LIBXS_DATATYPE(ELEMTYPE), 3/*m*/, 1/*n*/,
+      t/*ref*/, r/*tst*/, NULL/*ldref*/, NULL/*ldtst*/);
+  }
+  if (EXIT_SUCCESS == result) {
+    const double epsilon = libxs_matdiff_epsilon(di + 4);
+    /* intentionally not considered: libxs_matdiff_reduce(&diff, di + 4) */
+    /* Epsilon (combined) */
+    if (0.0000001 < LIBXS_ABS(epsilon - 0.0244949)) result = EXIT_FAILURE;
+    /* One-norm */
+    if (0.0000001 < LIBXS_ABS(di[4].norm1_abs - 0.0400000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[4].norm1_rel - 1.0000000)) result = EXIT_FAILURE;
+    /* Infinity-norm */
+    if (0.0000001 < LIBXS_ABS(di[4].normi_abs - 0.0200000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[4].normi_rel - 1.0000000)) result = EXIT_FAILURE;
+    /* Froebenius-norm (relative) */
+    if (0.0000001 < LIBXS_ABS(di[4].normf_rel - 1.0000000)) result = EXIT_FAILURE;
+    /** L2-norm */
+    if (0.0000001 < LIBXS_ABS(di[4].l2_abs - 0.0244949)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[4].l2_rel - 1.7320508)) result = EXIT_FAILURE;
+    /** L1-norm */
+    if (0.0000001 < LIBXS_ABS(di[4].l1_ref - 0.04)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[4].l1_tst - 0.00)) result = EXIT_FAILURE;
+    /* Linf-norm */
+    if (0.0000001 < LIBXS_ABS(di[4].linf_abs - 0.0200000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[4].linf_rel - 1.0000000)) result = EXIT_FAILURE;
+    /* R-squared */
+    if (0.0000001 < LIBXS_ABS(di[4].rsq + 0.0000000)) result = EXIT_FAILURE;
+    /* Location of maximum error */
+    if (1 != di[4].m || 0 != di[4].n) result = EXIT_FAILURE;
+    if (t[3*di[4].n+di[4].m] != di[4].v_ref) result = EXIT_FAILURE;
+    if (r[3*di[4].n+di[4].m] != di[4].v_tst) result = EXIT_FAILURE;
+  }
+
+  if (EXIT_SUCCESS == result) {
+    result = libxs_matdiff(di + 5, LIBXS_DATATYPE(ELEMTYPE), 3/*m*/, 1/*n*/,
+      r/*ref*/, r/*tst*/, NULL/*ldref*/, NULL/*ldtst*/);
+  }
+  if (EXIT_SUCCESS == result) {
+    const double epsilon = libxs_matdiff_epsilon(di + 5);
+    libxs_matdiff_reduce(&diff, di + 5);
+    /* Epsilon (combined) */
+    if (0.0000001 < LIBXS_ABS(epsilon - 0.0000000)) result = EXIT_FAILURE;
+    /* One-norm */
+    if (0.0000001 < LIBXS_ABS(di[5].norm1_abs - 0.0000000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[5].norm1_rel - 0.0000000)) result = EXIT_FAILURE;
+    /* Infinity-norm */
+    if (0.0000001 < LIBXS_ABS(di[5].normi_abs - 0.0000000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[5].normi_rel - 0.0000000)) result = EXIT_FAILURE;
+    /* Froebenius-norm (relative) */
+    if (0.0000001 < LIBXS_ABS(di[5].normf_rel - 0.0000000)) result = EXIT_FAILURE;
+    /** L2-norm */
+    if (0.0000001 < LIBXS_ABS(di[5].l2_abs - 0.0000000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[5].l2_rel - 0.0000000)) result = EXIT_FAILURE;
+    /** L1-norm */
+    if (0.0000001 < LIBXS_ABS(di[5].l1_ref - 0.00)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[5].l1_tst - 0.00)) result = EXIT_FAILURE;
+    /* Linf-norm */
+    if (0.0000001 < LIBXS_ABS(di[5].linf_abs - 0.0000000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(di[5].linf_rel - 0.0000000)) result = EXIT_FAILURE;
+    /* R-squared */
+    if (0.0000001 < LIBXS_ABS(di[5].rsq - 1.0000000)) result = EXIT_FAILURE;
+    /* Location of maximum error */
+    if (-1 != di[5].m || -1 != di[5].n) result = EXIT_FAILURE;
+  }
+
+  if (EXIT_SUCCESS == result) {
+    const double epsilon = libxs_matdiff_epsilon(&diff);
+    /* Epsilon (combined) */
+    if (0.0000001 < LIBXS_ABS(epsilon - 0.1132714)) result = EXIT_FAILURE;
+    /* One-norm */
+    if (0.0000001 < LIBXS_ABS(diff.norm1_abs - 3.1000000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(diff.norm1_rel - 0.0281818)) result = EXIT_FAILURE;
+    /* Infinity-norm */
+    if (0.0000002 < LIBXS_ABS(diff.normi_abs - 2.4400000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(diff.normi_rel - 0.0976000)) result = EXIT_FAILURE;
+    /* Froebenius-norm (relative) */
+    if (0.0000001 < LIBXS_ABS(diff.normf_rel - 0.1074954)) result = EXIT_FAILURE;
+    /** L2-norm */
+    if (0.0000001 < LIBXS_ABS(diff.l2_abs - 2.2383029)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(diff.l2_rel - 0.2438908)) result = EXIT_FAILURE;
+    /** L1-norm */
+    if (0.0000001 < LIBXS_ABS(diff.l1_ref - 266.00)) result = EXIT_FAILURE;
+    if (0.0000007 < LIBXS_ABS(diff.l1_tst - 267.90)) result = EXIT_FAILURE;
+    /* Linf-norm */
+    if (0.0000001 < LIBXS_ABS(diff.linf_abs - 2.0000000)) result = EXIT_FAILURE;
+    if (0.0000001 < LIBXS_ABS(diff.linf_rel - 0.2222222)) result = EXIT_FAILURE;
+    /* R-squared */
+    if (0.0000001 < LIBXS_ABS(diff.rsq - 0.9490077)) result = EXIT_FAILURE;
+    /* Location of maximum error */
+    if (2 != diff.m || 0 != diff.n) result = EXIT_FAILURE;
+    if (x[3*di[1].m+di[1].n] != di[1].v_ref) result = EXIT_FAILURE;
+    if (y[3*di[1].m+di[1].n] != di[1].v_tst) result = EXIT_FAILURE;
+  }
+
+  /* test inputs legally leading to an infinite large difference */
+  if (EXIT_SUCCESS == result) {
+    const ELEMTYPE u = 0.851375, v = 1.01863e+196;
+    libxs_matdiff_t d;
+    result = libxs_matdiff(&d, LIBXS_DATATYPE(ELEMTYPE), 1/*m*/, 1/*n*/,
+      &u/*ref*/, &v/*tst*/, NULL/*ldref*/, NULL/*ldtst*/);
+    if (EXIT_SUCCESS == result) {
+      const double epsilon = libxs_matdiff_epsilon(&d);
+      /* Epsilon */
+      if (epsilon != LIBXS_ABS(epsilon - v)) result = EXIT_FAILURE; /* infinity */
+      /* R-squared */
+      if (0 < d.rsq - 0.0) result = EXIT_FAILURE;
+      /* Location of maximum error */
+      if (0 != d.m || 0 != d.n) result = EXIT_FAILURE;
+    }
+  }
+
+  /* test NaN in test-set (result_nan == 1): norms become Inf, rsq stays zero */
+  if (EXIT_SUCCESS == result) {
+    const union { unsigned raw; float value; } nan_bits = { 0x7FC00000 };
+    const ELEMTYPE ref_nan[] = { (ELEMTYPE)1.0, (ELEMTYPE)2.0, (ELEMTYPE)3.0 };
+    ELEMTYPE tst_nan[3];
+    libxs_matdiff_t d;
+    tst_nan[0] = (ELEMTYPE)1.1;
+    tst_nan[1] = (ELEMTYPE)nan_bits.value; /* NaN */
+    tst_nan[2] = (ELEMTYPE)3.3;
+    result = libxs_matdiff(&d, LIBXS_DATATYPE(ELEMTYPE), 3/*m*/, 1/*n*/,
+      ref_nan/*ref*/, tst_nan/*tst*/, NULL/*ldref*/, NULL/*ldtst*/);
+    if (EXIT_SUCCESS == result) {
+      const double epsilon = libxs_matdiff_epsilon(&d);
+      /* norms must be infinity */
+      if (LIBXS_NOTNAN(epsilon) && 0 < epsilon) {
+        if (epsilon == epsilon - 1.0) { /* epsilon is +Inf: OK */ }
+        else result = EXIT_FAILURE;
+      }
+      else result = EXIT_FAILURE;
+      /* R-squared: must be zero (not +inf as before the fix) */
+      if (0 < d.rsq - 1.0) result = EXIT_FAILURE;
+      /* NaN detected at position of the NaN element */
+      if (1 != d.m || 0 != d.n) result = EXIT_FAILURE;
+    }
+  }
+
+  /* test NaN in reference-set (result_nan == 2): norms become Inf, rsq stays zero */
+  if (EXIT_SUCCESS == result) {
+    const union { unsigned raw; float value; } nan_bits = { 0x7FC00000 };
+    const union { unsigned raw; float value; } inf_bits = { 0x7F800000 };
+    ELEMTYPE ref_nan[3], tst_nan[3];
+    libxs_matdiff_t d;
+    ref_nan[0] = (ELEMTYPE)nan_bits.value; /* NaN */
+    ref_nan[1] = (ELEMTYPE)2.0;
+    ref_nan[2] = (ELEMTYPE)3.0;
+    tst_nan[0] = (ELEMTYPE)inf_bits.value; /* +Inf triggers else-branch */
+    tst_nan[1] = (ELEMTYPE)2.2;
+    tst_nan[2] = (ELEMTYPE)3.3;
+    result = libxs_matdiff(&d, LIBXS_DATATYPE(ELEMTYPE), 3/*m*/, 1/*n*/,
+      ref_nan/*ref*/, tst_nan/*tst*/, NULL/*ldref*/, NULL/*ldtst*/);
+    if (EXIT_SUCCESS == result) {
+      const double epsilon = libxs_matdiff_epsilon(&d);
+      /* norms must be infinity */
+      if (LIBXS_NOTNAN(epsilon) && 0 < epsilon) {
+        if (epsilon == epsilon - 1.0) { /* epsilon is +Inf: OK */ }
+        else result = EXIT_FAILURE;
+      }
+      else result = EXIT_FAILURE;
+      /* R-squared: must be zero */
+      if (0 < d.rsq - 1.0) result = EXIT_FAILURE;
+      /* NaN detected at position 0 */
+      if (0 != d.m || 0 != d.n) result = EXIT_FAILURE;
+    }
+  }
+
+  /* test NULL ref with non-NULL tst (exercises result_swap path):
+   * ref=NULL,tst=vals -> swap makes vals the new ref, tst becomes NULL.
+   * NULL tst means di=0 always -> rsq=1, epsilon=0, no location.
+   * After swap, original vals stats appear in tst-position. */
+  if (EXIT_SUCCESS == result) {
+    const ELEMTYPE ref_only[] = { (ELEMTYPE)1.0, (ELEMTYPE)2.0, (ELEMTYPE)3.0 };
+    libxs_matdiff_t d;
+    result = libxs_matdiff(&d, LIBXS_DATATYPE(ELEMTYPE), 3/*m*/, 1/*n*/,
+      NULL/*ref*/, ref_only/*tst*/, NULL/*ldref*/, NULL/*ldtst*/);
+    if (EXIT_SUCCESS == result) {
+      const double epsilon = libxs_matdiff_epsilon(&d);
+      /* no difference computable -> epsilon must be zero */
+      if (0 != epsilon) result = EXIT_FAILURE;
+      /* no difference found -> no location */
+      if (-1 != d.m || -1 != d.n) result = EXIT_FAILURE;
+      /* swapped: original vals stats appear in tst position */
+      if (0.0000001 < LIBXS_ABS(d.min_tst - 1.0)) result = EXIT_FAILURE;
+      if (0.0000001 < LIBXS_ABS(d.max_tst - 3.0)) result = EXIT_FAILURE;
+      /* ref-side: sentinel marks one-sided (min > max) */
+      if (d.min_ref <= d.max_ref) result = EXIT_FAILURE;
+      if (0 != d.l1_ref) result = EXIT_FAILURE;
+    }
+  }
+
+  /* test cleared struct yields sensible epsilon (ground state) */
+  if (EXIT_SUCCESS == result) {
+    libxs_matdiff_t d;
+    double epsilon;
+    libxs_matdiff_clear(&d);
+    epsilon = libxs_matdiff_epsilon(&d);
+    /* cleared struct: all norms are zero, rsq is zero -> epsilon must be zero */
+    if (0 != epsilon) result = EXIT_FAILURE;
+  }
+
+  return result;
+}

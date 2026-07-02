@@ -1,0 +1,103 @@
+site_name: LIBXS
+site_author: Hans Pabst
+copyright: Copyright (c) Intel Corporation, LIBXS Contributors.
+site_description: Library of specialized algebra and performance primitives.
+repo_url: https://github.com/hfp/libxs/
+edit_uri: edit/main/documentation
+site_url: https://libxs.readthedocs.io/
+docs_dir: documentation
+
+markdown_extensions:
+- toc:
+    permalink: True
+    toc_depth: 3
+    title: None
+- pymdownx.highlight:
+    anchor_linenums: true
+- pymdownx.inlinehilite
+- pymdownx.snippets
+- pymdownx.superfences
+- pymdownx.tabbed:
+    alternate_style: true
+- pymdownx.details
+- md_in_html
+- admonition
+- attr_list
+extra_css:
+- style.css
+
+theme:
+    name: readthedocs
+    custom_dir: .theme
+
+extra:
+  collapsed_nav:
+    - "Domains"
+    - "Samples"
+    - "Tests"
+    - "More"
+
+plugins:
+  - search
+
+hooks:
+  - .theme/hook.py
+
+nav:
+- Overview: index.md
+- Presentations: libxs_present.md
+- Fortran: libxs_fortran.md
+- Domains:
+  - Registry: libxs_reg.md
+  - Predict: libxs_predict.md
+  - Malloc: libxs_malloc.md
+  - Memory: libxs_mem.md
+  - String: libxs_str.md
+  - Token: libxs_token.md
+  - Timer: libxs_timer.md
+  - CPUID: libxs_cpuid.md
+  - Utils: libxs_utils.md
+  - Sync: libxs_sync.md
+  - GEMM: libxs_gemm.md
+  - Math: libxs_math.md
+  - Hash: libxs_hash.md
+  - Perm: libxs_perm.md
+  - Hist: libxs_hist.md
+  - MHD: libxs_mhd.md
+  - RNG: libxs_rng.md
+- Samples:
+  - Tokenizer: samples/libxs_tokenizer.md
+  - Converse: samples/libxs_converse.md
+  - Registry: samples/libxs_registry.md
+  - Predict: samples/libxs_predict.md
+  - Rosetta: samples/libxs_rosetta.md
+  - Setdiff: samples/libxs_setdiff.md
+  - Shuffle: samples/libxs_shuffle.md
+  - Scratch: samples/libxs_scratch.md
+  - Spatial: samples/libxs_spatial.md
+  - Fprint: samples/libxs_fprint.md
+  - Memory: samples/libxs_memory.md
+  - Ozaki: samples/libxs_ozaki.md
+  - GEMM: samples/libxs_gemm.md
+  - SYRK: samples/libxs_syrk.md
+  - Sync: samples/libxs_sync.md
+- Tests:
+  - Atomics: tests/atomics.md
+  - Fprint: tests/fprint.md
+  - Hash: tests/hash.md
+  - Headeronly: tests/headeronly.md
+  - Hist: tests/hist.md
+  - Intrinsics: tests/intrinsics.md
+  - Malloc: tests/malloc.md
+  - Matdiff: tests/matdiff.md
+  - Math: tests/math.md
+  - Memory: tests/memory.md
+  - MHD: tests/mhd.md
+  - Perm: tests/perm.md
+  - Registry: tests/registry.md
+  - Setdiff: tests/setdiff.md
+  - Timer: tests/timer.md
+
+- More:
+  - Development: libxs_scripts.md
+  - LIBXSTREAM: libxs_opencl.md

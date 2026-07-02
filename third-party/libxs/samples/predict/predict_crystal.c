@@ -1,0 +1,141 @@
+/******************************************************************************
+* Copyright (c) Intel Corporation - All rights reserved.                      *
+* This file is part of the LIBXS library.                                     *
+*                                                                             *
+* For information on the license, see the LICENSE file.                       *
+* Further information: https://github.com/hfp/libxs/                          *
+* SPDX-License-Identifier: BSD-3-Clause                                       *
+******************************************************************************/
+#include <libxs/libxs_predict.h>
+#include <libxs/libxs_timer.h>
+#include <libxs/libxs_mem.h>
+
+#if defined(_OPENMP)
+# include <omp.h>
+#endif
+
+enum { NFEAT = 37 };
+
+
+int main(int argc, char* argv[])
+{
+  const char* filename = (argc > 1) ? argv[1] : NULL;
+  const double split = (argc > 2) ? atof(argv[2]) : 0.8;
+  const int order = (argc > 3) ? atoi(argv[3]) : 2;
+  const int nclusters = (argc > 4) ? atoi(argv[4]) : 0;
+  int decompose = LIBXS_PREDICT_RF;
+  double quality = 0, consistency = 0;
+  int argi = 5, result = EXIT_FAILURE;
+  while (argi < argc) {
+    if ('c' == argv[argi][0] && 'o' == argv[argi][1]
+      && 'n' == argv[argi][2])
+    {
+      const char* p = argv[argi];
+      while ('\0' != *p && (*p < '0' || *p > '9') && '.' != *p) ++p;
+      consistency = ('\0' != *p) ? atof(p) : 0.9;
+    }
+    else if ('c' == argv[argi][0]) {
+      const char* p = argv[argi];
+      while ('\0' != *p && (*p < '0' || *p > '9') && '.' != *p) ++p;
+      quality = ('\0' != *p) ? atof(p) : 0.9;
+    }
+    else if ('f' == argv[argi][0]) decompose = LIBXS_PREDICT_FISHER;
+    else if ('h' == argv[argi][0]) decompose = LIBXS_PREDICT_HKNN;
+    else if ('s' == argv[argi][0]) decompose = LIBXS_PREDICT_SETDIFF;
+    else if ('r' == argv[argi][0]) decompose = LIBXS_PREDICT_RF;
+    else if ('n' == argv[argi][0]) decompose = LIBXS_PREDICT_RAW;
+    ++argi;
+  }
+  if (NULL == filename) {
+    fprintf(stdout,
+      "Usage: %s <crystal_csv> [train_fraction] [order] [nclusters]"
+      " [compress[Q]] [fisher|hknn|setdiff|rf|none]\n"
+      "  Crystal system prediction from composition features.\n"
+      "  Input: CSV with numeric features + crystal_system label (last col).\n"
+      "  Crystal systems: 1=triclinic, 2=monoclinic, 3=orthorhombic,\n"
+      "    4=tetragonal, 5=trigonal, 6=hexagonal, 7=cubic.\n"
+      "  Default: rf decomposition, train_fraction=0.8\n", argv[0]);
+  }
+  else {
+    libxs_predict_t* source = libxs_predict_create(NFEAT, 1);
+    if (NULL != source) {
+      const int total = libxs_predict_load_csv(source, filename, NULL,
+        NULL, NULL, NULL, 0, NULL);
+      if (0 < total) {
+        const int train_end = LIBXS_MAX((int)(total * split + 0.5), 2);
+        libxs_predict_t* model = libxs_predict_create(NFEAT, 1);
+        fprintf(stdout, "Loaded %d entries (%d features) from %s\n",
+          total, NFEAT, filename);
+        if (NULL != model) {
+          libxs_timer_tick_t tick;
+          int t, correct = 0, ntest = 0, gated = 0, gated_correct = 0;
+          int build_ok = EXIT_FAILURE;
+          double sum_conf = 0, dt_build, dt_eval;
+          libxs_predict_set_decompose(model, decompose);
+          if (0.0 != consistency) libxs_predict_set_consistency(model, consistency);
+          for (t = 0; t < train_end; ++t) {
+            double inputs[NFEAT], output;
+            libxs_predict_get(source, t, inputs, &output);
+            libxs_predict_push(NULL, model, inputs, &output);
+          }
+          tick = libxs_timer_tick();
+#if defined(_OPENMP)
+#         pragma omp parallel
+          { build_ok = libxs_predict_build_task(NULL, model, nclusters, order,
+              quality, omp_get_thread_num(), omp_get_num_threads());
+          }
+#else
+          build_ok = libxs_predict_build(model, nclusters, order, quality);
+#endif
+          dt_build = libxs_timer_duration(tick, libxs_timer_tick());
+          if (EXIT_SUCCESS == build_ok) {
+            libxs_predict_query_t qi;
+            LIBXS_MEMZERO(&qi);
+            libxs_predict_query(model, &qi);
+            fprintf(stdout, "Train=%d, Test=%d\n", qi.nentries, total - train_end);
+            fprintf(stdout, "Built: %d clusters, %.1fx compression, order=%d"
+              " (%.2f s)\n", qi.nclusters, qi.compression, qi.order, dt_build);
+            tick = libxs_timer_tick();
+            for (t = train_end; t < total; ++t) {
+              double inputs[NFEAT], predicted;
+              libxs_predict_info_t info;
+              libxs_predict_get(source, t, inputs, NULL);
+              libxs_predict_eval(NULL, model, inputs, &predicted, &info, 1);
+              { int label;
+                double expected;
+                libxs_predict_get(source, t, NULL, &expected);
+                label = LIBXS_ROUNDX(int, expected);
+                if (LIBXS_ROUNDX(int, predicted) == label) ++correct;
+                if (NULL != info.confidence && info.confidence[0] >= 0.9) {
+                  ++gated;
+                  if (LIBXS_ROUNDX(int, predicted) == label) ++gated_correct;
+                }
+              }
+              if (NULL != info.confidence) sum_conf += info.confidence[0];
+              ++ntest;
+            }
+            dt_eval = libxs_timer_duration(tick, libxs_timer_tick());
+            if (0 < ntest) {
+              fprintf(stdout, "Accuracy: %d/%d = %.1f%%\n",
+                correct, ntest, 100.0 * correct / ntest);
+              fprintf(stdout, "Confidence-gated (>=0.9): %d/%d = %.1f%%"
+                " (coverage %.1f%%)\n",
+                gated_correct, gated,
+                (0 < gated) ? 100.0 * gated_correct / gated : 0.0,
+                100.0 * gated / ntest);
+              fprintf(stdout, "Avg confidence: %.3f\n", sum_conf / ntest);
+              fprintf(stdout, "Eval: %d queries (%.2f s)\n", ntest, dt_eval);
+            }
+            result = EXIT_SUCCESS;
+          }
+          libxs_predict_destroy(model);
+        }
+      }
+      else {
+        fprintf(stderr, "Failed to load crystal data from %s\n", filename);
+      }
+      libxs_predict_destroy(source);
+    }
+  }
+  return result;
+}

@@ -1,0 +1,1191 @@
+/******************************************************************************
+* Copyright (c) Intel Corporation - All rights reserved.                      *
+* This file is part of the LIBXS library.                                     *
+*                                                                             *
+* For information on the license, see the LICENSE file.                       *
+* Further information: https://github.com/hfp/libxs/                          *
+* SPDX-License-Identifier: BSD-3-Clause                                       *
+******************************************************************************/
+#ifndef LIBXS_MACROS_H
+#define LIBXS_MACROS_H
+
+/* LIBXSTREAM header-only implies LIBXS header-only (unless prebuilt) */
+#if defined(LIBXSTREAM_SOURCE) && !defined(LIBXS_SOURCE) \
+ && !defined(__LIBXS) && !defined(LIBXS_BUILD)
+# define LIBXS_SOURCE
+#endif
+
+#if defined(LIBXS_BUILD)
+# include "libxs_version.h"
+#endif
+#if !defined(LIBXS_VERSION_MAJOR)
+# define LIBXS_VERSION_MAJOR  0
+# define LIBXS_VERSION_MINOR  0
+# define LIBXS_VERSION_UPDATE 0
+# define LIBXS_VERSION_PATCH  0
+#endif
+#if !defined(LIBXS_BUILD_DATE)
+# define LIBXS_BUILD_DATE 0
+#endif
+
+/** Configuration parameters. */
+#define LIBXS_CACHELINE 64
+#define LIBXS_ALIGNMENT LIBXS_CACHELINE
+#define LIBXS_SYNC 1
+/* first character may be used as default output separator */
+#define LIBXS_DELIMS ",;:"
+
+#if !defined(LIBXS_LOCK)
+# define LIBXS_LOCK LIBXS_LOCK_DEFAULT
+#endif
+
+/**
+ * Use "make PLATFORM=1" to disable platform checks.
+ * The platform check is to bail-out with an error
+ * message for an attempt to build an upstream package
+ * and subsequently to list LIBXS as "broken" on
+ * that platform.
+ * Note: successful compilation on an unsupported
+ * platform is desired, but only fallback code is
+ * present at best.
+ */
+#if !defined(__PLATFORM_FORCE) && 0
+# define __PLATFORM_FORCE
+#endif
+
+#if !defined(LIBXS_PLATFORM_X86) && ( \
+    (defined(__x86_64__) && 0 != (__x86_64__)) || \
+    (defined(__amd64__) && 0 != (__amd64__)) || \
+    (defined(_M_X64) || defined(_M_AMD64)) || \
+    (defined(__i386__) && 0 != (__i386__)) || \
+    (defined(_M_IX86)))
+# define LIBXS_PLATFORM_X86
+#endif
+#if !defined(LIBXS_PLATFORM_AARCH64) && \
+    (defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64))
+# define LIBXS_PLATFORM_AARCH64
+#endif
+#if !defined(LIBXS_PLATFORM_RV64) && \
+    (defined(__riscv) && 64 == (__riscv_xlen))
+# define LIBXS_PLATFORM_RV64
+#endif
+#if !defined(LIBXS_PLATFORM_SUPPORTED)
+# if defined(LIBXS_PLATFORM_X86) || defined(LIBXS_PLATFORM_AARCH64) || defined(LIBXS_PLATFORM_RV64)
+#   define LIBXS_PLATFORM_SUPPORTED
+# elif !defined(__PLATFORM_FORCE)
+#   error LIBXS requires X86_64, AArch64, RV64 or compatible CPUs!
+# endif
+#endif
+#if !defined(LIBXS_BITS)
+# if  (defined(__SIZEOF_PTRDIFF_T__) && 4 < (__SIZEOF_PTRDIFF_T__)) || \
+      (defined(__SIZE_MAX__) && (4294967295U < (__SIZE_MAX__))) || \
+      (defined(__aarch64__) || defined(__arm64__)) || \
+      (defined(__x86_64__) && 0 != (__x86_64__)) || \
+      (defined(__amd64__) && 0 != (__amd64__)) || \
+      (defined(_M_X64) || defined(_M_AMD64)) || \
+      (defined(_WIN64) || defined(_M_ARM64)) || \
+      (defined(__powerpc64))
+#   define LIBXS_UNLIMITED 0xFFFFFFFFFFFFFFFF
+#   define LIBXS_BITS 64
+# elif !defined(__PLATFORM_FORCE) && defined(NDEBUG)
+#   error LIBXS is only supported on 64-bit platforms!
+# else /* JIT-generated code (among other issues) is not supported! */
+#   define LIBXS_UNLIMITED 0xFFFFFFFF
+#   define LIBXS_BITS 32
+# endif
+#endif
+
+#define LIBXS_STRINGIFY_AUX(SYMBOL) #SYMBOL
+#define LIBXS_STRINGIFY(SYMBOL) LIBXS_STRINGIFY_AUX(SYMBOL)
+#define LIBXS_CONCATENATE2(A, B) A##B
+#define LIBXS_CONCATENATE3(A, B, C) LIBXS_CONCATENATE(LIBXS_CONCATENATE(A, B), C)
+#define LIBXS_CONCATENATE4(A, B, C, D) LIBXS_CONCATENATE(LIBXS_CONCATENATE3(A, B, C), D)
+#define LIBXS_CONCATENATE(A, B) LIBXS_CONCATENATE2(A, B)
+#define LIBXS_FSYMBOL(SYMBOL) LIBXS_CONCATENATE(SYMBOL, _)
+#define LIBXS_UNIQUE(NAME) LIBXS_CONCATENATE(NAME, __LINE__)
+#define LIBXS_EXPAND(...) __VA_ARGS__
+#define LIBXS_ELIDE(...)
+
+ /** Use LIBXS_VERSION2 instead of LIBXS_VERSION3, e.g., if __GNUC_PATCHLEVEL__ or __clang_patchlevel__ is zero (0). */
+#define LIBXS_VERSION2(MAJOR, MINOR) ((MAJOR) * 10000 + (MINOR) * 100)
+#define LIBXS_VERSION3(MAJOR, MINOR, UPDATE) (LIBXS_VERSION2(MAJOR, MINOR) + (UPDATE))
+
+#if !defined(LIBXS_VERSION_NUMBER)
+# define LIBXS_VERSION_NUMBER LIBXS_VERSION3(LIBXS_VERSION_MAJOR, \
+    LIBXS_VERSION_MINOR, LIBXS_VERSION_UPDATE)
+#endif
+#if !defined(LIBXS_VERSION_CHECK)
+# define LIBXS_VERSION_CHECK(COMP, MAJOR, MINOR, UPDATE) \
+    (LIBXS_VERSION_NUMBER COMP LIBXS_VERSION3(MAJOR, MINOR, UPDATE))
+#endif
+/**
+ * Macro to check minimum version requirements in code, for example:
+ * #if LIBXS_VERSION_GE(1, 17, 0, 0)
+ * // code requiring version 1.17 or later
+ * #else
+ * // fallback code
+ * #endif
+*/
+#define LIBXS_VERSION_GE(MAJOR, MINOR, UPDATE) \
+  LIBXS_VERSION_CHECK(>=, MAJOR, MINOR, UPDATE)
+
+#if defined(__INTEL_COMPILER)
+# if !defined(__INTEL_COMPILER_UPDATE)
+#   define LIBXS_INTEL_COMPILER __INTEL_COMPILER
+# else
+#   define LIBXS_INTEL_COMPILER (__INTEL_COMPILER + __INTEL_COMPILER_UPDATE)
+# endif
+#elif defined(__INTEL_COMPILER_BUILD_DATE)
+# define LIBXS_INTEL_COMPILER ((__INTEL_COMPILER_BUILD_DATE / 10000 - 2000) * 100)
+#endif
+
+/** Make LIBXS_PRAGMA available early. */
+#if defined(__cplusplus)
+# if (201103L <= __cplusplus) /*C99 compatibility*/
+#   define LIBXS_PRAGMA(DIRECTIVE) _Pragma(LIBXS_STRINGIFY(DIRECTIVE))
+# endif
+#else /* C */
+# if defined(__STDC_VERSION__) && (199901L <= __STDC_VERSION__) /*C99*/
+#   define LIBXS_PRAGMA(DIRECTIVE) _Pragma(LIBXS_STRINGIFY(DIRECTIVE))
+# elif defined(__GNUC__) /*|| defined(__clang__)*/
+#   define LIBXS_PRAGMA(DIRECTIVE) _Pragma(LIBXS_STRINGIFY(DIRECTIVE))
+# endif
+#endif /*__cplusplus*/
+#if !defined(LIBXS_PRAGMA)
+# if defined(LIBXS_INTEL_COMPILER) || defined(_MSC_VER)
+#   define LIBXS_PRAGMA(DIRECTIVE) __pragma(LIBXS_EXPAND(DIRECTIVE))
+# else
+#   define LIBXS_PRAGMA(DIRECTIVE)
+# endif
+#endif
+
+/** Allow control of diagnostics. */
+#if !defined(__INTEL_COMPILER)
+# if defined(__clang__)
+#   define LIBXS_PRAGMA_DIAG_PUSH()     LIBXS_PRAGMA(clang diagnostic push)
+#   define LIBXS_PRAGMA_DIAG_POP()      LIBXS_PRAGMA(clang diagnostic pop)
+#   define LIBXS_PRAGMA_DIAG_OFF(DIAG)  LIBXS_PRAGMA(clang diagnostic ignored DIAG)
+#   define LIBXS_PRAGMA_DIAG
+# elif defined(__GNUC__) && LIBXS_VERSION2(4, 6) <= LIBXS_VERSION2(__GNUC__, __GNUC_MINOR__)
+#   define LIBXS_PRAGMA_DIAG_PUSH()     LIBXS_PRAGMA(GCC diagnostic push)
+#   define LIBXS_PRAGMA_DIAG_POP()      LIBXS_PRAGMA(GCC diagnostic pop)
+#   define LIBXS_PRAGMA_DIAG_OFF(DIAG)  LIBXS_PRAGMA(GCC diagnostic ignored DIAG)
+#   define LIBXS_PRAGMA_DIAG
+# endif
+#endif
+#if !defined(LIBXS_PRAGMA_DIAG)
+# define LIBXS_PRAGMA_DIAG_PUSH()
+# define LIBXS_PRAGMA_DIAG_POP()
+# define LIBXS_PRAGMA_DIAG_OFF(DIAG)
+#endif
+#if defined(__GNUC__) || defined(__clang__)
+# define LIBXS_PRAGMA_DIAG_OFF_PEDANTIC() LIBXS_PRAGMA_DIAG_OFF("-Wpedantic")
+# define LIBXS_PRAGMA_DIAG_OFF_CASTQUAL() LIBXS_PRAGMA_DIAG_OFF("-Wcast-qual")
+# if (defined(__GNUC__) && !defined(__clang__)) || \
+      LIBXS_VERSION2(9, 0) <= LIBXS_VERSION2(__clang_major__, __clang_minor__)
+#   define LIBXS_PRAGMA_DIAG_OFF_FADDRESS() LIBXS_PRAGMA_DIAG_OFF("-Wframe-address")
+# endif
+# if defined(__clang__)
+#   define LIBXS_PRAGMA_DIAG_OFF_WUNKNOWN() LIBXS_PRAGMA_DIAG_OFF("-Wunknown-warning-option")
+# else
+#   define LIBXS_PRAGMA_DIAG_OFF_WUNKNOWN() LIBXS_PRAGMA_DIAG_OFF("-Wpragmas")
+# endif
+# define LIBXS_PRAGMA_DIAG_OFF_VARUNUSED() LIBXS_PRAGMA_DIAG_OFF("-Wunused-variable")
+#else
+# define LIBXS_PRAGMA_DIAG_OFF_PEDANTIC()
+# define LIBXS_PRAGMA_DIAG_OFF_CASTQUAL()
+# define LIBXS_PRAGMA_DIAG_OFF_WUNKNOWN()
+# define LIBXS_PRAGMA_DIAG_OFF_VARUNUSED()
+#endif
+#if !defined(LIBXS_PRAGMA_DIAG_OFF_FADDRESS)
+# define LIBXS_PRAGMA_DIAG_OFF_FADDRESS()
+#endif
+#if defined(LIBXS_INTEL_COMPILER)
+# define LIBXS_PRAGMA_OPTIMIZE_OFF LIBXS_PRAGMA(optimize("", off))
+# define LIBXS_PRAGMA_OPTIMIZE_ON  LIBXS_PRAGMA(optimize("", on))
+#elif defined(__clang__)
+# define LIBXS_PRAGMA_OPTIMIZE_OFF LIBXS_PRAGMA(clang optimize off)
+# define LIBXS_PRAGMA_OPTIMIZE_ON  LIBXS_PRAGMA(clang optimize on)
+#elif defined(__GNUC__)
+# define LIBXS_PRAGMA_OPTIMIZE_OFF LIBXS_PRAGMA(GCC push_options) LIBXS_PRAGMA(GCC optimize("O0"))
+# define LIBXS_PRAGMA_OPTIMIZE_ON  LIBXS_PRAGMA(GCC pop_options)
+#else
+# define LIBXS_PRAGMA_OPTIMIZE_OFF
+# define LIBXS_PRAGMA_OPTIMIZE_ON
+#endif
+
+/**
+ * Mark a symbol as a weak reference (#pragma weak).
+ * Supported by GCC, Clang, and classic Unix compilers.
+ * On unsupported compilers the macro expands to nothing.
+ */
+#if defined(__GNUC__) || defined(__clang__) || \
+   (defined(__SUNPRO_C) || defined(__SUNPRO_CC))
+# define LIBXS_PRAGMA_WEAK(SYMBOL) LIBXS_PRAGMA(weak SYMBOL)
+#else
+# define LIBXS_PRAGMA_WEAK(SYMBOL)
+#endif
+
+/** Suppress pedantic diagnostics for compiler extensions (GCC/Clang). */
+#if defined(__GNUC__) || defined(__clang__)
+# define LIBXS_EXTENSION __extension__
+#else
+# define LIBXS_EXTENSION
+#endif
+
+/** Native BF16 type.
+ * GCC 13+/Clang 15+ provide __bf16 as a scalar storage+conversion type.
+ * LIBXS_BF16 is defined when the __bf16 type is available. */
+#if !defined(LIBXS_BF16)
+# if defined(__BFLT16_MANT_DIG__)
+#   define LIBXS_BF16
+# endif
+#endif
+
+/** 128-bit unsigned integer type.
+ * GCC/Clang provide unsigned __int128 on 64-bit targets.
+ * LIBXS_INT128 is defined when libxs_uint128_t is available. */
+#if !defined(LIBXS_INT128)
+# if defined(__SIZEOF_INT128__) || \
+    ((defined(__GNUC__) || defined(__clang__)) && (64 <= LIBXS_BITS))
+    LIBXS_EXTENSION typedef unsigned __int128 libxs_uint128_t;
+#   define LIBXS_INT128
+# endif
+#endif
+
+/** Relies on LIBXS_TYPEORDER: F64=0, F32=1, C64=2, C32=3, I64=4, ... UNKNOWN=12. */
+#define LIBXS_ENUM_IS_FLOAT(ENUM) (LIBXS_TYPEORDER(LIBXS_DATATYPE_I64) > LIBXS_TYPEORDER(ENUM))
+#define LIBXS_ENUM_IS_COMPLEX(ENUM) (LIBXS_DATATYPE_C64 == (ENUM) || LIBXS_DATATYPE_C32 == (ENUM))
+#define LIBXS_ENUM_IS_UINT(ENUM)  (LIBXS_TYPEORDER(LIBXS_DATATYPE_UNKNOWN) > LIBXS_TYPEORDER(ENUM) && \
+                                  !LIBXS_ENUM_IS_FLOAT(ENUM) && ( \
+    LIBXS_DATATYPE_U64 == (ENUM) || LIBXS_DATATYPE_U32 == (ENUM) || \
+    LIBXS_DATATYPE_U16 == (ENUM) || LIBXS_DATATYPE_U8 == (ENUM)) \
+  )
+#define LIBXS_ENUM_PROMOTE(DST_ENUM, SRC_ENUM) ( \
+    (LIBXS_ENUM_IS_FLOAT(DST_ENUM) || (SRC_ENUM) == (DST_ENUM)) || \
+    (LIBXS_ENUM_IS_UINT(DST_ENUM) \
+      ? (LIBXS_ENUM_IS_UINT(SRC_ENUM) ? (LIBXS_TYPESIZE(SRC_ENUM) <= LIBXS_TYPESIZE(DST_ENUM)) : 0) \
+      : (LIBXS_ENUM_IS_UINT(SRC_ENUM) ? 0 : (LIBXS_TYPESIZE(SRC_ENUM) <= LIBXS_TYPESIZE(DST_ENUM)))) \
+  )
+
+/** Evaluates to true if the value falls into the interval [LO, HI]. */
+#define LIBXS_IS_INTEGER(TYPE, VALUE, LO, HI) ( \
+  ((LO) == (TYPE)(VALUE) || (LO) < (TYPE)(VALUE)) && LIBXS_MIN(1ULL*(VALUE),HI) <= (HI) && \
+  ((0 <= (double)(VALUE) || (0 > (LO) && 0 < (HI)))))
+/** LIBXS_IS_TYPE: check value against type-range of TYPE. */
+#define LIBXS_IS_ULLONG(VALUE) LIBXS_IS_INTEGER(unsigned long long, VALUE, 0, ULLONG_MAX)
+#define LIBXS_IS_LLONG(VALUE) LIBXS_IS_INTEGER(/*signed*/long long, VALUE, LLONG_MIN, LLONG_MAX)
+#define LIBXS_IS_ULONG(VALUE) LIBXS_IS_INTEGER(unsigned long, VALUE, 0, ULONG_MAX)
+#define LIBXS_IS_LONG(VALUE) LIBXS_IS_INTEGER(/*signed*/long, VALUE, LONG_MIN, LONG_MAX)
+#define LIBXS_IS_USHORT(VALUE) LIBXS_IS_INTEGER(unsigned short, VALUE, 0, USHRT_MAX)
+#define LIBXS_IS_SHORT(VALUE) LIBXS_IS_INTEGER(/*signed*/short, VALUE, SHRT_MIN, SHRT_MAX)
+#define LIBXS_IS_UCHAR(VALUE) LIBXS_IS_INTEGER(unsigned char, VALUE, 0, UCHAR_MAX)
+#define LIBXS_IS_ICHAR(VALUE) LIBXS_IS_INTEGER(signed char, VALUE, SCHAR_MIN, SCHAR_MAX)
+#define LIBXS_IS_CHAR(VALUE) LIBXS_IS_INTEGER(char, VALUE, CHAR_MIN, CHAR_MAX)
+#define LIBXS_IS_UINT(VALUE) LIBXS_IS_INTEGER(unsigned int, VALUE, 0, UINT_MAX)
+#define LIBXS_IS_INT(VALUE) LIBXS_IS_INTEGER(/*signed*/int, VALUE, INT_MIN, INT_MAX)
+
+#if !defined(LIBXS_CAST_CHECK)
+# if !defined(__COVERITY__)
+#   define LIBXS_CAST_CHECK(EXPR, MSG) LIBXS_ASSERT_MSG(EXPR, MSG)
+# else
+#   define LIBXS_CAST_CHECK(EXPR, MSG) LIBXS_ASSERT_MSG(1, MSG)
+# endif
+#endif
+
+/**
+ * LIBXS_CAST: Perform type-cast with following two advantages:
+ *               (1) Make it easy to locate/find the type-cast.
+ *               (2) Range-check to ensure fitting into type.
+ */
+#define LIBXS_CAST_ULLONG(VALUE) ((unsigned long long)(LIBXS_CAST_CHECK(LIBXS_IS_ULLONG(VALUE), "Value cannot be represented as ULLONG"), VALUE))
+#define LIBXS_CAST_LLONG(VALUE) ((/*signed*/long long)(LIBXS_CAST_CHECK(LIBXS_IS_LLONG(VALUE), "Value cannot be represented as LLONG"), VALUE))
+#define LIBXS_CAST_ULONG(VALUE) ((unsigned long)(LIBXS_CAST_CHECK(LIBXS_IS_ULONG(VALUE), "Value cannot be represented as ULONG"), VALUE))
+#define LIBXS_CAST_LONG(VALUE) ((/*signed*/long)(LIBXS_CAST_CHECK(LIBXS_IS_LONG(VALUE), "Value cannot be represented as LONG"), VALUE))
+#define LIBXS_CAST_USHORT(VALUE) ((unsigned short)(LIBXS_CAST_CHECK(LIBXS_IS_USHORT(VALUE), "Value cannot be represented as USHORT"), VALUE))
+#define LIBXS_CAST_SHORT(VALUE) ((/*signed*/short)(LIBXS_CAST_CHECK(LIBXS_IS_SHORT(VALUE), "Value cannot be represented as SHORT"), VALUE))
+#define LIBXS_CAST_UCHAR(VALUE) ((unsigned char)(LIBXS_CAST_CHECK(LIBXS_IS_UCHAR(VALUE), "Value cannot be represented as UCHAR"), VALUE))
+#define LIBXS_CAST_ICHAR(VALUE) ((signed char)(LIBXS_CAST_CHECK(LIBXS_IS_ICHAR(VALUE), "Value cannot be represented as ICHAR"), VALUE))
+#define LIBXS_CAST_CHAR(VALUE) ((char)(LIBXS_CAST_CHECK(LIBXS_IS_CHAR(VALUE), "Value cannot be represented as CHAR"), VALUE))
+#define LIBXS_CAST_UINT(VALUE) ((unsigned int)(LIBXS_CAST_CHECK(LIBXS_IS_UINT(VALUE), "Value cannot be represented as UINT"), VALUE))
+#define LIBXS_CAST_INT(VALUE) ((/*signed*/int)(LIBXS_CAST_CHECK(LIBXS_IS_INT(VALUE), "Value cannot be represented as INT"), VALUE))
+
+#if !defined(LIBXS_UNPACKED) && (defined(_CRAYC) || \
+  (0 == LIBXS_SYNC)/*Windows: missing pack(pop) error*/)
+# define LIBXS_UNPACKED /* CCE/Classic */
+#endif
+#if defined(_WIN32) && !defined(__GNUC__) && !defined(__clang__)
+# define LIBXS_ATTRIBUTE(A) __declspec(A)
+# if defined(__cplusplus)
+#   define LIBXS_INLINE_ALWAYS __forceinline
+# else
+#   define LIBXS_INLINE_ALWAYS static __forceinline
+# endif
+# define LIBXS_INLINE_NEVER LIBXS_ATTRIBUTE(noinline)
+# define LIBXS_ALIGNED(DECL, N) LIBXS_ATTRIBUTE(align(N)) DECL
+# if !defined(LIBXS_UNPACKED)
+#   define LIBXS_PACKED(TYPE) LIBXS_PRAGMA(pack(1)) TYPE
+# endif
+# define LIBXS_CDECL __cdecl
+#elif (defined(__GNUC__) || defined(__clang__) || defined(__PGI))
+# define LIBXS_ATTRIBUTE(A) __attribute__((A))
+# define LIBXS_INLINE_ALWAYS LIBXS_ATTRIBUTE(always_inline) LIBXS_INLINE
+# define LIBXS_INLINE_NEVER LIBXS_ATTRIBUTE(noinline)
+# define LIBXS_ALIGNED(DECL, N) LIBXS_ATTRIBUTE(aligned(N)) DECL
+# if !defined(LIBXS_UNPACKED)
+#   define LIBXS_PACKED(TYPE) TYPE LIBXS_ATTRIBUTE(__packed__)
+# endif
+# define LIBXS_CDECL LIBXS_ATTRIBUTE(cdecl)
+#else
+# define LIBXS_ATTRIBUTE(A)
+# define LIBXS_INLINE_ALWAYS LIBXS_INLINE
+# define LIBXS_INLINE_NEVER
+# define LIBXS_ALIGNED(DECL, N) DECL
+# define LIBXS_CDECL
+#endif
+#if !defined(LIBXS_PACKED)
+# define LIBXS_PACKED(TYPE) TYPE
+# if !defined(LIBXS_UNPACKED)
+#   define LIBXS_UNPACKED
+# endif
+#endif
+#if !defined(LIBXS_UNPACKED) && 0
+/* no braces around EXPR */
+# define LIBXS_PAD(EXPR) EXPR;
+#endif
+#if !defined(LIBXS_PAD)
+# define LIBXS_PAD(EXPR)
+#endif
+
+/* LIBXS_ATTRIBUTE_USED: mark library functions as used to avoid warning */
+#if defined(__GNUC__) || defined(__clang__) || (defined(__INTEL_COMPILER) && !defined(_WIN32))
+# if !defined(__cplusplus) || !defined(__clang__)
+#   define LIBXS_ATTRIBUTE_COMMON LIBXS_ATTRIBUTE(common)
+# else
+#   define LIBXS_ATTRIBUTE_COMMON
+# endif
+# define LIBXS_ATTRIBUTE_MALLOC LIBXS_ATTRIBUTE(malloc)
+# define LIBXS_ATTRIBUTE_UNUSED LIBXS_ATTRIBUTE(unused)
+# define LIBXS_ATTRIBUTE_USED LIBXS_ATTRIBUTE(used)
+#else
+# if defined(_WIN32) && !defined(LIBXS_PLATFORM_AARCH64)
+#   define LIBXS_ATTRIBUTE_COMMON LIBXS_ATTRIBUTE(selectany)
+# else
+#   define LIBXS_ATTRIBUTE_COMMON
+# endif
+# define LIBXS_ATTRIBUTE_MALLOC
+# define LIBXS_ATTRIBUTE_UNUSED
+# define LIBXS_ATTRIBUTE_USED
+#endif
+#if !defined(__INTEL_COMPILER) && (defined(__clang__) /*|| defined(__PGLLVM__)*/)
+# define LIBXS_ATTRIBUTE_NO_SANITIZE(KIND) LIBXS_ATTRIBUTE(no_sanitize(LIBXS_STRINGIFY(KIND)))
+#elif defined(__GNUC__) && LIBXS_VERSION2(4, 8) <= LIBXS_VERSION2(__GNUC__, __GNUC_MINOR__) \
+  && !defined(__INTEL_COMPILER) && !defined(__PGLLVM__)
+# define LIBXS_ATTRIBUTE_NO_SANITIZE(KIND) LIBXS_ATTRIBUTE(LIBXS_CONCATENATE(no_sanitize_, KIND))
+#else
+# define LIBXS_ATTRIBUTE_NO_SANITIZE(KIND)
+#endif
+
+#if defined(__cplusplus)
+# define LIBXS_VARIADIC ...
+# define LIBXS_EXTERN extern "C"
+# define LIBXS_EXTERN_C extern "C"
+# define LIBXS_INLINE_KEYWORD inline
+# define LIBXS_INLINE LIBXS_INLINE_KEYWORD
+# if defined(__GNUC__) || defined(_CRAYC)
+#   define LIBXS_CALLER __PRETTY_FUNCTION__
+# elif defined(_MSC_VER)
+#   define LIBXS_CALLER __FUNCDNAME__
+#   define LIBXS_FUNCNAME __FUNCTION__
+# else
+#   define LIBXS_CALLER __FUNCNAME__
+# endif
+/** Function argument with default value (C++). */
+# define LIBXS_ARGDEF(ARG, DEF) ARG = DEF
+#else /* C */
+# define LIBXS_VARIADIC
+# define LIBXS_EXTERN extern
+# define LIBXS_EXTERN_C
+# if defined(__STDC_VERSION__) && (199901L <= __STDC_VERSION__) /*C99*/
+#   define LIBXS_CALLER __func__
+#   define LIBXS_RESTRICT restrict
+#   define LIBXS_INLINE_KEYWORD inline
+# elif defined(_MSC_VER)
+#   define LIBXS_CALLER __FUNCDNAME__
+#   define LIBXS_FUNCNAME __FUNCTION__
+#   define LIBXS_INLINE_KEYWORD __inline
+#   define LIBXS_INLINE_FIXUP
+# elif (defined(__GNUC__) /*|| defined(__clang__)*/) && !defined(__STRICT_ANSI__)
+#   define LIBXS_CALLER __PRETTY_FUNCTION__
+# endif
+# if !defined(LIBXS_INLINE_KEYWORD)
+#   define LIBXS_INLINE_KEYWORD
+#   define LIBXS_INLINE_FIXUP
+# endif
+/** Function argument with default value (C++). */
+# define LIBXS_ARGDEF(ARG, DEF) ARG
+/* LIBXS_ATTRIBUTE_USED: increases compile-time of header-only by a large factor */
+# define LIBXS_INLINE static LIBXS_INLINE_KEYWORD LIBXS_ATTRIBUTE_UNUSED
+#endif /*__cplusplus*/
+#if !defined(LIBXS_FUNCNAME)
+# if defined(LIBXS_CALLER)
+#   define LIBXS_FUNCNAME LIBXS_CALLER
+# else
+#   define LIBXS_CALLER NULL
+#   define LIBXS_FUNCNAME ""
+# endif
+#endif
+#if !defined(LIBXS_CALLER_ID)
+# if defined(__GNUC__) || 1
+#   define LIBXS_CALLER_ID ((const void*)((uintptr_t)libxs_hash_string(LIBXS_CALLER)))
+# else /* assume no string-pooling (perhaps unsafe) */
+#   define LIBXS_CALLER_ID LIBXS_CALLER
+# endif
+#endif
+
+/* may include Clang and other compatible compilers */
+#if defined(__GNUC__) && !defined(_WIN32) && !defined(__CYGWIN__) && !defined(__MINGW32__)
+# define LIBXS_VISIBILITY_HIDDEN LIBXS_ATTRIBUTE(visibility("hidden"))
+# define LIBXS_VISIBILITY_PUBLIC LIBXS_ATTRIBUTE(visibility("default"))
+#endif
+#if !defined(LIBXS_VISIBILITY_HIDDEN)
+# define LIBXS_VISIBILITY_HIDDEN
+#endif
+#if !defined(LIBXS_VISIBILITY_PUBLIC)
+# define LIBXS_VISIBILITY_PUBLIC
+#endif
+
+/* Windows Dynamic Link Library (DLL) */
+#if defined(_WINDLL) && (defined(_WIN32) || defined(__CYGWIN__) || defined(__MINGW32__))
+# define LIBXS_VISIBILITY_EXPORT LIBXS_ATTRIBUTE(dllexport)
+# define LIBXS_VISIBILITY_IMPORT LIBXS_ATTRIBUTE(dllimport)
+#endif
+#if !defined(LIBXS_VISIBILITY_EXPORT)
+# define LIBXS_VISIBILITY_EXPORT LIBXS_VISIBILITY_PUBLIC
+#endif
+#if !defined(LIBXS_VISIBILITY_IMPORT)
+# define LIBXS_VISIBILITY_IMPORT LIBXS_VISIBILITY_PUBLIC
+#endif
+
+/**
+ * Build-kind constants for parameterized API macros.
+ * Another library depending on LIBXS can reuse these:
+ *
+ *   #if defined(MYLIB_SOURCE_H)
+ *   # define MYLIB_BUILD_KIND LIBXS_APIKIND_INLINE
+ *   #elif defined(MYLIB_BUILD)
+ *   # define MYLIB_BUILD_KIND LIBXS_APIKIND_EXPORT
+ *   #else
+ *   # define MYLIB_BUILD_KIND LIBXS_APIKIND_IMPORT
+ *   #endif
+ *   #define MYLIB_API        LIBXS_API_DECL(MYLIB_BUILD_KIND)
+ *   #define MYLIB_API_INTERN LIBXS_API_DECL_INTERN(MYLIB_BUILD_KIND)
+ */
+#define LIBXS_APIKIND_IMPORT 0
+#define LIBXS_APIKIND_EXPORT 1
+#define LIBXS_APIKIND_INLINE 2
+
+#if defined(LIBXS_SOURCE_H) || defined(LIBXS_SOURCE)
+# define LIBXS_BUILD_KIND LIBXS_APIKIND_INLINE
+#elif defined(LIBXS_BUILD)
+# define LIBXS_BUILD_KIND LIBXS_APIKIND_EXPORT
+#else
+# define LIBXS_BUILD_KIND LIBXS_APIKIND_IMPORT
+#endif
+
+/** Parameterized extern linkage per build-kind. */
+#define LIBXS_APIKIND_LINKAGE_0 LIBXS_EXTERN
+#define LIBXS_APIKIND_LINKAGE_1 LIBXS_EXTERN
+#define LIBXS_APIKIND_LINKAGE_2 LIBXS_EXTERN_C
+#define LIBXS_APIKIND_LINKAGE(KIND) LIBXS_CONCATENATE(LIBXS_APIKIND_LINKAGE_, KIND)
+
+/** Parameterized inline target per build-kind. */
+#define LIBXS_APIKIND_TARGET_0
+#define LIBXS_APIKIND_TARGET_1
+#define LIBXS_APIKIND_TARGET_2 LIBXS_INLINE
+#define LIBXS_APIKIND_TARGET(KIND) LIBXS_CONCATENATE(LIBXS_APIKIND_TARGET_, KIND)
+
+/** Parameterized common attribute per build-kind (for variables in header-only). */
+#define LIBXS_APIKIND_COMMON_0
+#define LIBXS_APIKIND_COMMON_1
+#define LIBXS_APIKIND_COMMON_2 LIBXS_ATTRIBUTE_COMMON
+#define LIBXS_APIKIND_COMMON(KIND) LIBXS_CONCATENATE(LIBXS_APIKIND_COMMON_, KIND)
+
+/** Parameterized public/export visibility per build-kind. */
+#define LIBXS_APIKIND_VEXPORT_0 LIBXS_VISIBILITY_IMPORT
+#define LIBXS_APIKIND_VEXPORT_1 LIBXS_VISIBILITY_EXPORT
+#define LIBXS_APIKIND_VEXPORT_2
+#define LIBXS_APIKIND_VEXPORT(KIND) LIBXS_CONCATENATE(LIBXS_APIKIND_VEXPORT_, KIND)
+
+/** Parameterized private/internal visibility per build-kind. */
+#define LIBXS_APIKIND_VINTERN_0
+#define LIBXS_APIKIND_VINTERN_1 LIBXS_VISIBILITY_HIDDEN
+#define LIBXS_APIKIND_VINTERN_2
+#define LIBXS_APIKIND_VINTERN(KIND) LIBXS_CONCATENATE(LIBXS_APIKIND_VINTERN_, KIND)
+
+/** Two-level visibility dispatch: VIS is EXPORT or INTERN. */
+#define LIBXS_APIKIND_VIS(VIS, KIND) LIBXS_CONCATENATE(LIBXS_APIKIND_V, VIS)(KIND)
+
+/** Public function decoration parameterized by build-kind. */
+#define LIBXS_API_DECL(KIND) LIBXS_APIKIND_LINKAGE(KIND) LIBXS_APIKIND_TARGET(KIND) LIBXS_APIKIND_VEXPORT(KIND)
+/** Private function decoration parameterized by build-kind. */
+#define LIBXS_API_DECL_INTERN(KIND) LIBXS_APIKIND_LINKAGE(KIND) LIBXS_APIKIND_TARGET(KIND) LIBXS_APIKIND_VINTERN(KIND)
+/** Variable helpers parameterized by build-kind. */
+#define LIBXS_APIVAR_DECL(DECL, VIS, EXTERN, KIND) EXTERN LIBXS_APIKIND_COMMON(KIND) LIBXS_APIKIND_VIS(VIS, KIND) DECL
+#if (!defined(__INTEL_COMPILER) || !defined(_WIN32))
+# define LIBXS_APIVAR_DECL_ALIGNED(DECL, VIS, KIND) LIBXS_ALIGNED(LIBXS_APIVAR_DECL(DECL, VIS, , KIND), LIBXS_ALIGNMENT)
+#else
+# define LIBXS_APIVAR_DECL_ALIGNED(DECL, VIS, KIND) LIBXS_APIVAR_DECL(DECL, VIS, , KIND)
+#endif
+/** Public variable declaration (header). */
+#define LIBXS_APIVAR_DECL_PUBLIC(DECL, KIND) LIBXS_APIVAR_DECL(DECL, EXPORT, LIBXS_APIKIND_LINKAGE(KIND), KIND)
+/** Public variable definition (source). */
+#define LIBXS_APIVAR_DECL_PUBLIC_DEF(DECL, KIND) LIBXS_APIVAR_DECL_ALIGNED(DECL, EXPORT, KIND)
+/** Private variable declaration (header). */
+#define LIBXS_APIVAR_DECL_PRIVATE(DECL, KIND) LIBXS_APIVAR_DECL(DECL, INTERN, LIBXS_APIKIND_LINKAGE(KIND), KIND)
+/** Private variable definition (source). */
+#define LIBXS_APIVAR_DECL_PRIVATE_DEF(DECL, KIND) LIBXS_APIVAR_DECL_ALIGNED(DECL, INTERN, KIND)
+/** Private variable declaration+definition (source). */
+#define LIBXS_APIVAR_DECL_DEFINE(DECL, KIND) LIBXS_APIVAR_DECL_PRIVATE(DECL, KIND); LIBXS_APIVAR_DECL_PRIVATE_DEF(DECL, KIND)
+
+/** LIBXS backward-compatible macros.
+ * The LIBXS_API_VISIBILITY_* macros must be simple token definitions
+ * (not function-like macro calls) because LIBXS_API_VISIBILITY(VIS)
+ * produces them via ## token pasting. */
+#if LIBXS_BUILD_KIND == LIBXS_APIKIND_INLINE
+# define LIBXS_API_EXTERN LIBXS_EXTERN
+# define LIBXS_API_TARGET LIBXS_INLINE
+# define LIBXS_API_COMMON LIBXS_ATTRIBUTE_COMMON
+# define LIBXS_API_VISIBILITY_EXPORT
+# define LIBXS_API_VISIBILITY_INTERN
+#elif LIBXS_BUILD_KIND == LIBXS_APIKIND_EXPORT
+# define LIBXS_API_EXTERN LIBXS_EXTERN
+# define LIBXS_API_TARGET
+# define LIBXS_API_COMMON
+# define LIBXS_API_VISIBILITY_EXPORT LIBXS_VISIBILITY_EXPORT
+# define LIBXS_API_VISIBILITY_INTERN LIBXS_VISIBILITY_HIDDEN
+#else
+# define LIBXS_API_EXTERN LIBXS_EXTERN
+# define LIBXS_API_TARGET
+# define LIBXS_API_COMMON
+# define LIBXS_API_VISIBILITY_EXPORT LIBXS_VISIBILITY_IMPORT
+# define LIBXS_API_VISIBILITY_INTERN
+#endif
+#define LIBXS_API_VISIBILITY(VIS) LIBXS_CONCATENATE(LIBXS_API_VISIBILITY_, VIS)
+#define LIBXS_APIVAR(DECL, VISIBILITY, EXTERN) EXTERN LIBXS_API_COMMON LIBXS_API_VISIBILITY(VISIBILITY) DECL
+#define LIBXS_API_INLINE LIBXS_INLINE
+#define LIBXS_API_DEF
+
+#if (!defined(__INTEL_COMPILER) || !defined(_WIN32))
+#define LIBXS_APIVAR_ALIGNED(DECL, VISIBILITY) LIBXS_ALIGNED(LIBXS_APIVAR(DECL, VISIBILITY, LIBXS_API_DEF), LIBXS_ALIGNMENT)
+#else
+#define LIBXS_APIVAR_ALIGNED(DECL, VISIBILITY) LIBXS_APIVAR(DECL, VISIBILITY, LIBXS_API_DEF)
+#endif
+
+/** Public variable declaration (without definition) located in header file. */
+#define LIBXS_APIVAR_PUBLIC(DECL) LIBXS_APIVAR(DECL, EXPORT, LIBXS_API_EXTERN)
+/** Public variable definition (complements declaration) located in source file. */
+#define LIBXS_APIVAR_PUBLIC_DEF(DECL) LIBXS_APIVAR_ALIGNED(DECL, EXPORT)
+/** Private variable declaration (without definition) located in header file. */
+#define LIBXS_APIVAR_PRIVATE(DECL) LIBXS_APIVAR(DECL, INTERN, LIBXS_API_EXTERN)
+/** Private variable definition (complements declaration) located in source file. */
+#define LIBXS_APIVAR_PRIVATE_DEF(DECL) LIBXS_APIVAR_ALIGNED(DECL, INTERN)
+/** Private variable (declaration and definition) located in source file. */
+#define LIBXS_APIVAR_DEFINE(DECL) LIBXS_APIVAR_PRIVATE(DECL); LIBXS_APIVAR_PRIVATE_DEF(DECL)
+/** Function decoration used for private functions. */
+#define LIBXS_API_INTERN LIBXS_API_DECL_INTERN(LIBXS_BUILD_KIND)
+/** Function decoration used for public functions of LIBXS library. */
+#define LIBXS_API LIBXS_API_DECL(LIBXS_BUILD_KIND)
+
+#if !defined(LIBXS_RESTRICT)
+# if ((defined(__GNUC__) && !defined(__CYGWIN32__)) || defined(LIBXS_INTEL_COMPILER)) && !defined(_WIN32)
+#   define LIBXS_RESTRICT __restrict__
+# elif defined(_MSC_VER) || defined(LIBXS_INTEL_COMPILER)
+#   define LIBXS_RESTRICT __restrict
+# else
+#   define LIBXS_RESTRICT
+# endif
+#endif /*LIBXS_RESTRICT*/
+#if !defined(__OPENMP_SIMD)
+# if defined(LIBXS_INTEL_COMPILER) && (1500 <= LIBXS_INTEL_COMPILER)
+#   define __OPENMP_SIMD
+# elif defined(_OPENMP) && (201307/*v4.0*/ <= _OPENMP)
+#   define __OPENMP_SIMD
+# endif
+#endif
+
+#if !defined(LIBXS_INTEL_COMPILER) || (LIBXS_INTEL_COMPILER < 9900)
+# if defined(__OPENMP_SIMD)
+#   define LIBXS_PRAGMA_SIMD_REDUCTION(EXPRESSION) LIBXS_PRAGMA(omp simd reduction(EXPRESSION))
+#   define LIBXS_PRAGMA_SIMD_COLLAPSE(N) LIBXS_PRAGMA(omp simd collapse(N))
+#   define LIBXS_PRAGMA_SIMD_PRIVATE(...) LIBXS_PRAGMA(omp simd private(__VA_ARGS__))
+#   define LIBXS_PRAGMA_SIMD LIBXS_PRAGMA(omp simd)
+# elif defined(__INTEL_COMPILER)
+#   define LIBXS_PRAGMA_SIMD_REDUCTION(EXPRESSION) LIBXS_PRAGMA(simd reduction(EXPRESSION))
+#   define LIBXS_PRAGMA_SIMD_COLLAPSE(N) LIBXS_PRAGMA(simd collapse(N))
+#   define LIBXS_PRAGMA_SIMD_PRIVATE(...) LIBXS_PRAGMA(simd private(__VA_ARGS__))
+#   define LIBXS_PRAGMA_SIMD LIBXS_PRAGMA(simd)
+# endif
+#endif
+#if !defined(LIBXS_PRAGMA_SIMD)
+# define LIBXS_PRAGMA_SIMD_REDUCTION(EXPRESSION)
+# define LIBXS_PRAGMA_SIMD_COLLAPSE(N)
+# define LIBXS_PRAGMA_SIMD_PRIVATE(...)
+# define LIBXS_PRAGMA_SIMD
+#endif
+
+#if defined(__INTEL_COMPILER)
+# define LIBXS_PRAGMA_NONTEMPORAL(...) LIBXS_PRAGMA(vector nontemporal(__VA_ARGS__))
+# define LIBXS_PRAGMA_VALIGNED LIBXS_PRAGMA(vector aligned)
+# define LIBXS_PRAGMA_NOVECTOR LIBXS_PRAGMA(novector)
+# define LIBXS_PRAGMA_FORCEINLINE LIBXS_PRAGMA(forceinline)
+# define LIBXS_PRAGMA_LOOP_COUNT(MIN, MAX, AVG) LIBXS_PRAGMA(loop_count min=MIN max=MAX avg=AVG)
+# define LIBXS_PRAGMA_UNROLL_AND_JAM(N) LIBXS_PRAGMA(unroll_and_jam(N))
+# define LIBXS_PRAGMA_UNROLL_N(N) LIBXS_PRAGMA(unroll(N))
+# define LIBXS_PRAGMA_UNROLL LIBXS_PRAGMA(unroll)
+# define LIBXS_PRAGMA_VALIGNED_VAR(A) LIBXS_ASSUME_ALIGNED(A, LIBXS_ALIGNMENT);
+/*# define LIBXS_UNUSED(VARIABLE) LIBXS_PRAGMA(unused(VARIABLE))*/
+#else
+# if defined(__OPENMP_SIMD) && (201811/*v5.0*/ <= _OPENMP) && !defined(__PGLLVM__)
+#   define LIBXS_PRAGMA_NONTEMPORAL(...) LIBXS_PRAGMA(omp simd nontemporal(__VA_ARGS__))
+# else
+#   define LIBXS_PRAGMA_NONTEMPORAL(...)
+# endif
+# if defined(__clang__)
+#   define LIBXS_PRAGMA_VALIGNED_VAR(A)
+#   define LIBXS_PRAGMA_VALIGNED
+#   define LIBXS_PRAGMA_NOVECTOR LIBXS_PRAGMA(clang loop vectorize(disable))
+#   define LIBXS_PRAGMA_FORCEINLINE
+#   define LIBXS_PRAGMA_LOOP_COUNT(MIN, MAX, AVG) LIBXS_PRAGMA(unroll(AVG))
+#   define LIBXS_PRAGMA_UNROLL_AND_JAM(N) LIBXS_PRAGMA(unroll(N))
+#   define LIBXS_PRAGMA_UNROLL_N(N) LIBXS_PRAGMA(unroll(N))
+#   define LIBXS_PRAGMA_UNROLL LIBXS_PRAGMA_UNROLL_N(4)
+# else
+#   define LIBXS_PRAGMA_VALIGNED_VAR(A)
+#   define LIBXS_PRAGMA_VALIGNED
+#   define LIBXS_PRAGMA_NOVECTOR
+#   define LIBXS_PRAGMA_FORCEINLINE
+#   define LIBXS_PRAGMA_LOOP_COUNT(MIN, MAX, AVG)
+#   define LIBXS_PRAGMA_UNROLL_AND_JAM(N)
+#   define LIBXS_PRAGMA_UNROLL
+# endif
+#endif
+#if !defined(LIBXS_PRAGMA_UNROLL_N)
+# if defined(__GNUC__) && (LIBXS_VERSION2(8, 3) <= LIBXS_VERSION2(__GNUC__, __GNUC_MINOR__))
+#   define LIBXS_PRAGMA_UNROLL_N(N) LIBXS_PRAGMA(GCC unroll N)
+# else
+#   define LIBXS_PRAGMA_UNROLL_N(N)
+# endif
+#endif
+
+#if defined(_OPENMP) && (200805/*v3.0*/ <= _OPENMP) \
+ && defined(NDEBUG) /* CCE complains for debug builds */
+# define LIBXS_OPENMP_COLLAPSE(N) collapse(N)
+#else
+# define LIBXS_OPENMP_COLLAPSE(N)
+#endif
+
+/** Calculate the (transposed) linear offset aka index for a buffer with a leading dimension. */
+#define LIBXS_INDEX(TRANS, LD, I, J) (0 != (TRANS) ? ((size_t)(LD) * (I) + (J)) : ((size_t)(LD) * (J) + (I)))
+
+/** LIBXS_UP2POT rounds up to the next power of two (POT). */
+#define LIBXS_UP2POT_01(N) ((N) | ((N) >> 1))
+#define LIBXS_UP2POT_02(N) (LIBXS_UP2POT_01(N) | (LIBXS_UP2POT_01(N) >> 2))
+#define LIBXS_UP2POT_04(N) (LIBXS_UP2POT_02(N) | (LIBXS_UP2POT_02(N) >> 4))
+#define LIBXS_UP2POT_08(N) (LIBXS_UP2POT_04(N) | (LIBXS_UP2POT_04(N) >> 8))
+#define LIBXS_UP2POT_16(N) (LIBXS_UP2POT_08(N) | (LIBXS_UP2POT_08(N) >> 16))
+#define LIBXS_UP2POT_32(N) (LIBXS_UP2POT_16(N) | (LIBXS_UP2POT_16(N) >> 32))
+#define LIBXS_UP2POT(N) (LIBXS_UP2POT_32((unsigned long long)(N) - LIBXS_MIN(1, N)) + LIBXS_MIN(1, N))
+#define LIBXS_LO2POT(N) (LIBXS_UP2POT_32((unsigned long long)(N) >> 1) + LIBXS_MIN(1, N))
+
+#define LIBXS_UPDIV(N, MULT) (((N) + ((MULT) - 1)) / (MULT))
+#define LIBXS_UP(N, MULT) (LIBXS_UPDIV(N, MULT) * (MULT))
+#define LIBXS_LO2(N, NPOT) ((N) & ~((NPOT) - 1))
+#define LIBXS_UP2(N, NPOT) LIBXS_LO2((N) + ((NPOT) - 1), NPOT)
+/** Examples: N+10%->UPF(N,1,10), N-10%->UPF(N,-1,10), N*90%->UPF(N,-1,10) */
+#define LIBXS_UPF(N, NOM, DEN) (((N) * ((DEN) + (NOM))) / (DEN))
+#define LIBXS_SIGN(A) (0 < (A) ? (1) : ( 0 == (A) ? (0) : (-1)))
+#define LIBXS_ABS(A) (0 <= (A) ? (A) : -(A))
+#define LIBXS_MIN(A, B) ((A) < (B) ? (A) : (B))
+#define LIBXS_MAX(A, B) ((A) < (B) ? (B) : (A))
+#define LIBXS_MOD(A, N) ((A) % (N))
+#define LIBXS_MOD2(A, NPOT) ((A) & ((NPOT) - 1))
+#define LIBXS_DELTA(T0, T1) ((T0) < (T1) ? ((T1) - (T0)) : ((T0) - (T1)))
+#define LIBXS_CLMP(VALUE, LO, HI) ((LO) < (VALUE) ? ((VALUE) <= (HI) ? (VALUE) : LIBXS_MIN(VALUE, HI)) : LIBXS_MAX(LO, VALUE))
+#define LIBXS_SIZEOF(START, LAST) (((const char*)(LAST)) - ((const char*)(START)) + sizeof(*LAST))
+#define LIBXS_FEQ(A, B) ((A) == (B))
+#define LIBXS_NEQ(A, B) ((A) != (B))
+#define LIBXS_ISPOT(A) (0 != (A) && !((A) & ((A) - 1)))
+#define LIBXS_ISWAP(A, B) (((A) ^= (B)), ((B) ^= (A)), ((A) ^= (B)))
+#define LIBXS_ISNAN(A)  LIBXS_NEQ(A, A)
+#define LIBXS_NOTNAN(A) LIBXS_FEQ(A, A)
+#define LIBXS_ROUNDX(TYPE, A) ((TYPE)((long long)(0 <= (A) ? ((double)(A) + 0.5) : ((double)(A) - 0.5))))
+#define LIBXS_NEARBYINTX(TYPE, A) ((TYPE)((long long)(LIBXS_ROUNDX(TYPE, ((double)(A) / 2.0)) * 2)))
+#define LIBXS_EOR(ENUM_TYPE, ENUM, FLAG) ((ENUM_TYPE)(((int)(ENUM)) | ((int)(FLAG))))
+
+/** Makes some functions available independent of C99 support. */
+#if defined(__STDC_VERSION__) && (199901L/*C99*/ <= __STDC_VERSION__)
+# if defined(__PGI)
+#   define LIBXS_POWF(A, B) ((float)pow((float)(A), (float)(B)))
+# else
+#   define LIBXS_POWF(A, B) powf(A, B)
+# endif
+# define LIBXS_FREXPF(A, B) frexpf(A, B)
+# define LIBXS_ROUNDF(A) roundf(A)
+# define LIBXS_ROUND(A) round(A)
+# define LIBXS_NEARBYINTF(A) nearbyintf(A)
+# define LIBXS_NEARBYINT(A) nearbyint(A)
+# define LIBXS_TANHF(A) tanhf(A)
+# define LIBXS_SQRTF(A) sqrtf(A)
+# define LIBXS_EXP2F(A) exp2f(A)
+# define LIBXS_LOG2F(A) log2f(A)
+# define LIBXS_FABSF(A) fabsf(A)
+# define LIBXS_FABS(A) fabs(A)
+# define LIBXS_ERFF(A) erff(A)
+# define LIBXS_EXP2(A) exp2(A)
+# define LIBXS_LOG2(A) log2(A)
+# define LIBXS_EXPF(A) expf(A)
+# define LIBXS_LOGF(A) logf(A)
+#else
+# define LIBXS_POWF(A, B) ((float)pow((float)(A), (float)(B)))
+# define LIBXS_FREXPF(A, B) ((float)frexp((float)(A), B))
+# define LIBXS_ROUNDF(A) LIBXS_ROUNDX(float, A)
+# define LIBXS_ROUND(A) LIBXS_ROUNDX(double, A)
+# define LIBXS_NEARBYINTF(A) LIBXS_NEARBYINTX(float, A)
+# define LIBXS_NEARBYINT(A) LIBXS_NEARBYINTX(double, A)
+# define LIBXS_TANHF(A) ((float)tanh((float)(A)))
+# define LIBXS_SQRTF(A) ((float)sqrt((float)(A)))
+# define LIBXS_EXP2F(A) LIBXS_POWF(2, A)
+# define LIBXS_LOG2F(A) ((float)LIBXS_LOG2((float)(A)))
+# define LIBXS_FABSF(A) ((float)fabs((float)(A)))
+# define LIBXS_FABS(A) fabs(A)
+# define LIBXS_ERFF(A) ((float)erf((float)(A)))
+# define LIBXS_EXP2(A) pow(2.0, A)
+# define LIBXS_LOG2(A) (log(A) * (1.0 / (M_LN2)))
+# define LIBXS_EXPF(A) ((float)exp((float)(A)))
+# define LIBXS_LOGF(A) ((float)log((float)(A)))
+#endif
+
+#if defined(LIBXS_INTEL_COMPILER)
+# if (1700 <= LIBXS_INTEL_COMPILER)
+#   define LIBXS_ASSUME(EXPRESSION) __assume(EXPRESSION)
+# else
+#   define LIBXS_ASSUME(EXPRESSION) assert(EXPRESSION)
+# endif
+#elif defined(_MSC_VER)
+# define LIBXS_ASSUME(EXPRESSION) __assume(EXPRESSION)
+#elif defined(__GNUC__) && !defined(_CRAYC) && (LIBXS_VERSION2(4, 5) <= LIBXS_VERSION2(__GNUC__, __GNUC_MINOR__))
+# define LIBXS_ASSUME(EXPRESSION) do { if (!(EXPRESSION)) __builtin_unreachable(); } while(0)
+#else
+# define LIBXS_ASSUME(EXPRESSION) assert(EXPRESSION)
+#endif
+
+#if defined(__INTEL_COMPILER)
+# define LIBXS_ASSUME_ALIGNED(A, N) __assume_aligned(A, N)
+#else
+# define LIBXS_ASSUME_ALIGNED(A, N) assert(0 == ((uintptr_t)(A)) % (N))
+#endif
+#define LIBXS_ALIGN(POINTER, ALIGNMENT/*POT*/) ((POINTER) + (LIBXS_UP2((uintptr_t)(POINTER), ALIGNMENT) - ((uintptr_t)(POINTER))) / sizeof(*(POINTER)))
+#define LIBXS_FOLD2(POINTER, ALIGNMENT, NPOT) LIBXS_MOD2(((uintptr_t)(POINTER) / (ALIGNMENT)), NPOT)
+
+#if !defined(LIBXS_UNUSED)
+# if 0
+#   define LIBXS_UNUSED(VARIABLE) LIBXS_PRAGMA(unused(VARIABLE))
+# else
+#   define LIBXS_UNUSED(VARIABLE) (void)(VARIABLE)
+# endif
+#endif
+#if defined(NDEBUG)
+# define LIBXS_UNUSED_NDEBUG(VARIABLE) LIBXS_UNUSED(VARIABLE)
+# define LIBXS_UNUSED_DEBUG(VARIABLE)
+#else
+# define LIBXS_UNUSED_NDEBUG(VARIABLE)
+# define LIBXS_UNUSED_DEBUG(VARIABLE) LIBXS_UNUSED(VARIABLE)
+#endif
+
+#if defined(_OPENMP)
+# define LIBXS_PRAGMA_OMP(...) LIBXS_PRAGMA(omp __VA_ARGS__)
+# if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
+#   define LIBXS_OMP_VAR(A) LIBXS_UNUSED(A) /* suppress warning about "unused" variable */
+# elif defined(__clang__)
+#   define LIBXS_OMP_VAR(A) (A) = 0
+# else
+# define LIBXS_OMP_VAR(A)
+# endif
+#else
+# define LIBXS_PRAGMA_OMP(...)
+# define LIBXS_OMP_VAR(A)
+#endif
+
+#if defined(LIBXS_BUILD) && (defined(__GNUC__) || defined(__clang__)) && \
+   !defined(__CYGWIN__) && !defined(__MINGW32__) && !defined(_WIN32)
+# define LIBXS_ATTRIBUTE_WEAK_IMPORT LIBXS_ATTRIBUTE(weak_import)
+# define LIBXS_ATTRIBUTE_WEAK LIBXS_ATTRIBUTE(weak)
+#elif defined(_WIN32) && !defined(LIBXS_PLATFORM_AARCH64)
+# define LIBXS_ATTRIBUTE_WEAK LIBXS_ATTRIBUTE(selectany)
+# define LIBXS_ATTRIBUTE_WEAK_IMPORT
+#else
+# define LIBXS_ATTRIBUTE_WEAK
+# define LIBXS_ATTRIBUTE_WEAK_IMPORT
+#endif
+
+#if !defined(LIBXS_NO_CTOR) && !defined(LIBXS_CTOR) && \
+    (defined(__STDC_VERSION__) && (199901L <= __STDC_VERSION__)) && \
+    (defined(__GNUC__) || defined(__clang__))
+# define LIBXS_ATTRIBUTE_CTOR LIBXS_ATTRIBUTE(constructor)
+# define LIBXS_ATTRIBUTE_DTOR LIBXS_ATTRIBUTE(destructor)
+/*# define LIBXS_CTOR*/
+#else
+# define LIBXS_ATTRIBUTE_CTOR
+# define LIBXS_ATTRIBUTE_DTOR
+#endif
+
+#if defined(LIBXS_BUILD)
+# define LIBXS_API_CTOR LIBXS_API LIBXS_ATTRIBUTE_CTOR
+# define LIBXS_API_DTOR LIBXS_API LIBXS_ATTRIBUTE_DTOR
+#else
+# define LIBXS_API_CTOR LIBXS_API
+# define LIBXS_API_DTOR LIBXS_API
+#endif
+
+#if defined(__GNUC__) && !defined(__PGI) && !defined(__ibmxl__)
+# define LIBXS_ATTRIBUTE_NO_TRACE LIBXS_ATTRIBUTE(no_instrument_function)
+#else
+# define LIBXS_ATTRIBUTE_NO_TRACE
+#endif
+
+#if defined(__GNUC__)
+# define LIBXS_MAY_ALIAS LIBXS_ATTRIBUTE(__may_alias__)
+#else
+# define LIBXS_MAY_ALIAS
+#endif
+
+#if !defined(LIBXS_MKTEMP_PATTERN)
+# define LIBXS_MKTEMP_PATTERN "XXXXXX"
+#endif
+
+/** Construct BLAS-style prefixes. */
+#define LIBXS_TYPECHAR(TYPE) LIBXS_CONCATENATE(LIBXS_TYPECHAR_, TYPE)
+#define LIBXS_TYPECHAR_double d
+#define LIBXS_TYPECHAR_float s
+#define LIBXS_CMPXCHAR(TYPE) LIBXS_CONCATENATE(LIBXS_CMPXCHAR_, TYPE)
+#define LIBXS_CMPXCHAR_double z
+#define LIBXS_CMPXCHAR_float c
+#define LIBXS_TPREFIX(TYPE, NAME) LIBXS_CONCATENATE(LIBXS_TYPECHAR(TYPE), NAME)
+#define LIBXS_CPREFIX(TYPE, NAME) LIBXS_CONCATENATE(LIBXS_CMPXCHAR(TYPE), NAME)
+
+/** Below group is to fix-up some platform/compiler specifics. */
+#if defined(_WIN32)
+# if !defined(_CRT_SECURE_CPP_OVERLOAD_STANDARD_NAMES)
+#   define _CRT_SECURE_CPP_OVERLOAD_STANDARD_NAMES 1
+# endif
+# if !defined(_CRT_INTERNAL_NONSTDC_NAMES)
+#   define _CRT_INTERNAL_NONSTDC_NAMES 1
+# endif
+# if !defined(_CRT_SECURE_NO_DEPRECATE)
+#   define _CRT_SECURE_NO_DEPRECATE 1
+# endif
+# if !defined(_USE_MATH_DEFINES)
+#   define _USE_MATH_DEFINES 1
+# endif
+# if !defined(WIN32_LEAN_AND_MEAN)
+#   define WIN32_LEAN_AND_MEAN 1
+# endif
+# if !defined(NOMINMAX)
+#   define NOMINMAX 1
+# endif
+# if defined(__INTEL_COMPILER) && (190023506 <= _MSC_FULL_VER)
+#   define __builtin_huge_val() HUGE_VAL
+#   define __builtin_huge_valf() HUGE_VALF
+#   define __builtin_nan nan
+#   define __builtin_nanf nanf
+#   define __builtin_nans nan
+#   define __builtin_nansf nanf
+#   if defined(__cplusplus)
+#     define _CMATH_
+#   endif
+# endif
+# if !defined(LIBXS_PATH_SEPARATOR)
+#   define LIBXS_PATH_SEPARATOR '\\'
+# endif
+#elif !defined(LIBXS_PATH_SEPARATOR)
+# define LIBXS_PATH_SEPARATOR '/'
+#endif
+#if defined(LIBXS_BUILD) && !defined(_WIN32)
+# if !defined(_XOPEN_SOURCE) && 0
+#   define _XOPEN_SOURCE 500
+# endif
+# if !defined(_DEFAULT_SOURCE)
+#   define _DEFAULT_SOURCE
+# endif
+# if !defined(_GNU_SOURCE)
+#   define _GNU_SOURCE
+# endif
+#endif
+#if !defined(__STDC_FORMAT_MACROS)
+# define __STDC_FORMAT_MACROS
+#endif
+#if defined(__clang__) && !defined(__extern_always_inline)
+# define __extern_always_inline LIBXS_INLINE
+#endif
+#if defined(LIBXS_INLINE_FIXUP) && !defined(inline)
+# define inline LIBXS_INLINE_KEYWORD
+#endif
+
+#if (0 != LIBXS_SYNC)
+# if !defined(_REENTRANT)
+#   define _REENTRANT
+# endif
+# if defined(__PGI)
+#   if defined(__GCC_ATOMIC_TEST_AND_SET_TRUEVAL)
+#     undef __GCC_ATOMIC_TEST_AND_SET_TRUEVAL
+#   endif
+#   define __GCC_ATOMIC_TEST_AND_SET_TRUEVAL 1
+# endif
+#endif
+
+#if !defined(__clang__) || 1
+# if !defined(__has_feature)
+# define __has_feature(A) 0
+# endif
+# if !defined(__has_builtin)
+#   define __has_builtin(A) 0
+# endif
+#endif
+
+#if (0 != LIBXS_SYNC) && !defined(_WIN32) && !defined(__CYGWIN__)
+# include <pthread.h>
+#endif
+#if defined(_WIN32) || defined(__CYGWIN__)
+# include <windows.h>
+#else
+# include <unistd.h>
+#endif
+#if !defined(LIBXS_ASSERT)
+# include <assert.h>
+# if defined(NDEBUG)
+#   define LIBXS_ASSERT(EXPR) LIBXS_ASSUME(EXPR)
+# else
+#   define LIBXS_ASSERT(EXPR) assert(EXPR)
+# endif
+#endif
+#if !defined(LIBXS_ASSERT_MSG)
+# if defined(_MSC_VER)
+#   define LIBXS_ASSERT_MSG(EXPR, MSG) (assert((EXPR) && *MSG), EXPR)
+# else
+#   define LIBXS_ASSERT_MSG(EXPR, MSG) assert((EXPR) && *MSG)
+# endif
+#endif
+
+#if !defined(LIBXS_ELIDE_RESULT)
+# define LIBXS_ELIDE_RESULT(TYPE, EXPR) do { \
+    /*const*/ TYPE libxs_elide_result_ = (EXPR); \
+    LIBXS_UNUSED(libxs_elide_result_); \
+  } while(0)
+#endif
+#if !defined(LIBXS_EXPECT_ELIDE)
+# define LIBXS_EXPECT_ELIDE(EXPR) LIBXS_ELIDE_RESULT(int, EXPR)
+#endif
+#if defined(NDEBUG)
+# define LIBXS_EXPECT LIBXS_EXPECT_ELIDE
+#else
+# define LIBXS_EXPECT LIBXS_ASSERT
+#endif
+#if defined(_DEBUG)
+# define LIBXS_EXPECT_DEBUG LIBXS_EXPECT
+#else
+# define LIBXS_EXPECT_DEBUG LIBXS_EXPECT_ELIDE
+#endif
+#if defined(_OPENMP) /*&& defined(LIBXS_SYNC_OMP)*/
+LIBXS_PRAGMA_DIAG_PUSH()
+LIBXS_PRAGMA_DIAG_OFF_PEDANTIC()
+# include <omp.h>
+LIBXS_PRAGMA_DIAG_POP()
+#endif
+#include <inttypes.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
+#include <limits.h>
+#include <float.h>
+#include <stdio.h>
+
+#if !defined(__leaf__)
+# define __leaf__
+#endif
+#if defined(__THROW)
+# define LIBXS_NOTHROW __THROW
+#endif
+#if defined(__cplusplus)
+# if (199711L < __cplusplus)
+#   define LIBXS_NOEXCEPT noexcept
+# else
+#   define LIBXS_NOEXCEPT throw()
+# endif
+#else
+# define LIBXS_NOEXCEPT
+#endif
+#if !defined(LIBXS_NOTHROW)
+# define LIBXS_NOTHROW
+#endif
+
+#if !defined(FLT_MAX)
+# if !defined(__FLT_MAX__)
+#   define FLT_MAX 3.40282346638528859811704183484516925e+38F
+# else
+#   define FLT_MAX __FLT_MAX__
+# endif
+#endif
+#if !defined(FLT_MIN)
+# if !defined(__FLT_MIN__)
+#   define FLT_MIN 1.17549435082228750796873653722224568e-38F
+# else
+#   define FLT_MIN __FLT_MIN__
+# endif
+#endif
+#if defined(_WIN32) && 0
+# define LIBXS_SNPRINTF(S, N, ...) _snprintf_s(S, N, _TRUNCATE, __VA_ARGS__)
+#elif (defined(__STDC_VERSION__) && 199901L <= __STDC_VERSION__) || defined(__cplusplus)
+# define LIBXS_SNPRINTF(S, N, ...) snprintf(S, N, __VA_ARGS__)
+#else
+# define LIBXS_SNPRINTF(S, N, ...) sprintf((S) + /*unused*/(N) * 0, __VA_ARGS__)
+#endif
+
+#if defined(_WIN32)
+# define LIBXS_PUTENV(A) _putenv(A)
+#else
+# define LIBXS_PUTENV(A) putenv(A)
+# define LIBXS_MKTEMP(A) mkstemp(A)
+# if defined(__clang__) || !defined(__GNUC__) || (defined(__GNUC__) && LIBXS_VERSION2(4, 3) <= LIBXS_VERSION2(__GNUC__, __GNUC_MINOR__))
+LIBXS_EXTERN int mkstemp(char*);
+# else
+LIBXS_EXTERN int mkstemp(char*) LIBXS_NOTHROW;
+# endif
+LIBXS_EXTERN int putenv(char*) LIBXS_NOTHROW;
+#endif
+
+/* block must be after including above header files */
+#if (defined(__GLIBC__) && defined(__GLIBC_MINOR__) && LIBXS_VERSION2(__GLIBC__, __GLIBC_MINOR__) < LIBXS_VERSION2(2, 26)) \
+  || (defined(LIBXS_INTEL_COMPILER) && (1802 >= LIBXS_INTEL_COMPILER) && !defined(__cplusplus) && defined(__linux__))
+/* _Float128 was introduced with GNU GCC 7.0. */
+# if !defined(_Float128) && !defined(__SIZEOF_FLOAT128__) && defined(__GNUC__) && !defined(__cplusplus) && defined(__linux__)
+#   define _Float128 __float128
+# endif
+# if !defined(LIBXS_GLIBC_FPTYPES) && defined(__GNUC__) && !defined(__cplusplus) && defined(__linux__) \
+  && (LIBXS_VERSION2(7, 0) > LIBXS_VERSION2(__GNUC__, __GNUC_MINOR__) || \
+     (defined(LIBXS_INTEL_COMPILER) && (1802 >= LIBXS_INTEL_COMPILER)))
+#   define LIBXS_GLIBC_FPTYPES
+# endif
+# if !defined(_Float128X) && defined(LIBXS_GLIBC_FPTYPES)
+#   define _Float128X _Float128
+# endif
+# if !defined(_Float32) && defined(LIBXS_GLIBC_FPTYPES)
+#   define _Float32 float
+# endif
+# if !defined(_Float32x) && defined(LIBXS_GLIBC_FPTYPES)
+#   define _Float32x _Float32
+# endif
+# if !defined(_Float64) && defined(LIBXS_GLIBC_FPTYPES)
+#   define _Float64 double
+# endif
+# if !defined(_Float64x) && defined(LIBXS_GLIBC_FPTYPES)
+#   define _Float64x _Float64
+# endif
+#endif
+
+#if defined(LIBXS_GLIBC_FPTYPES)
+# if defined(__cplusplus)
+#   undef __USE_MISC
+#   if !defined(_DEFAULT_SOURCE)
+#     define _DEFAULT_SOURCE
+#   endif
+#   if !defined(_BSD_SOURCE)
+#     define _BSD_SOURCE
+#   endif
+# else
+#   if !defined(__PURE_INTEL_C99_HEADERS__)
+#     define __PURE_INTEL_C99_HEADERS__
+#   endif
+# endif
+#endif
+
+#if !defined(LIBXS_NO_LIBM)
+# if (defined(LIBXS_INTEL_COMPILER) && (1800 <= LIBXS_INTEL_COMPILER)) \
+  && !defined(_WIN32) /* error including dfp754.h */
+#   include <mathimf.h>
+# endif
+# if defined(__STRICT_ANSI__)
+#   define LIBXS_STRICT_ANSI __STRICT_ANSI__
+#   undef __STRICT_ANSI__
+# endif
+# include <math.h>
+# if defined(LIBXS_STRICT_ANSI)
+#   define __STRICT_ANSI__ LIBXS_STRICT_ANSI
+#   undef LIBXS_STRICT_ANSI
+# endif
+# if (!defined(__STDC_VERSION__) || (199901L/*C99*/ > __STDC_VERSION__)) && !defined(_WIN32)
+LIBXS_EXTERN double erf(double) LIBXS_NOTHROW;
+# endif
+#endif
+#if !defined(M_PI)
+# define M_PI 3.14159265358979323846
+#endif
+
+/**
+ * Embed a binary file into the read-only data section at compile time.
+ * Produces two symbols: NAME (start) and NAME_end (one-past-end).
+ * Requires GNU-compatible inline assembly (GCC, Clang).
+ * FILENAME is resolved relative to the assembler's working directory
+ * (typically the build directory); use an absolute path if needed.
+ * ALIGN is the byte alignment (integer), e.g., 16.
+ */
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(_MSC_VER)
+# if defined(_WIN32)
+#   define LIBXS_INCBIN_SECTION ".rdata, \"dr\""
+# elif defined(__APPLE__)
+#   define LIBXS_INCBIN_SECTION "__DATA,__const"
+# else
+#   define LIBXS_INCBIN_SECTION ".rodata"
+# endif
+# if defined(__ELF__)
+#   define LIBXS_INCBIN(NAME, FILENAME, ALIGN) \
+      __asm__(".section " LIBXS_INCBIN_SECTION "\n" \
+              "  .global " #NAME "\n" \
+              "  .type " #NAME ", @object\n" \
+              "  .balign " #ALIGN "\n" \
+              "" #NAME ":\n" \
+              "  .incbin \"" FILENAME "\"\n" \
+              "" #NAME "_end:\n" \
+              ".previous"); \
+      extern const char NAME[], NAME##_end[]
+# else /* Mach-O, PE/COFF: no .type directive */
+#   define LIBXS_INCBIN(NAME, FILENAME, ALIGN) \
+      __asm__(".section " LIBXS_INCBIN_SECTION "\n" \
+              "  .global " LIBXS_STRINGIFY(_##NAME) "\n" \
+              "  .balign " #ALIGN "\n" \
+              LIBXS_STRINGIFY(_##NAME) ":\n" \
+              "  .incbin \"" FILENAME "\"\n" \
+              LIBXS_STRINGIFY(_##NAME) "_end:\n" \
+              ".previous"); \
+      extern const char NAME[], NAME##_end[]
+# endif
+#endif
+
+#if !defined(LIBXS_INTERCEPT_DYNAMIC) && /*defined(LIBXS_BUILD) &&*/ \
+    (defined(__GNUC__) || defined(_CRAYC)) && !defined(_WIN32) && !defined(__CYGWIN__) && \
+   !(defined(__APPLE__) && defined(__MACH__) && LIBXS_VERSION2(6, 1) >= \
+      LIBXS_VERSION2(__clang_major__, __clang_minor__))
+# define LIBXS_INTERCEPT_DYNAMIC
+#endif
+
+#if defined(LIBXS_INTERCEPT_DYNAMIC)
+# include <dlfcn.h>
+# if !defined(RTLD_NEXT)
+#   define LIBXS_RTLD_NEXT ((void*)-1l)
+# else
+#   define LIBXS_RTLD_NEXT RTLD_NEXT
+# endif
+#endif
+
+#endif /*LIBXS_MACROS_H*/

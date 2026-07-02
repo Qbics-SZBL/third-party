@@ -1,0 +1,226 @@
+name: GCC
+
+permissions:
+  contents: read
+  pull-requests: write
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  repository_dispatch:
+    types: [libxstream-update]
+  workflow_dispatch: {}
+
+jobs:
+  Test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        gcc: [12, 14]
+        flags: [DBG=0, DBG=1 PEDANTIC=2 UPLOAD=0]
+        libxstream: [prebuilt]
+        include:
+          - gcc: 14
+            flags: DBG=1 PEDANTIC=2 FORCE_CXX=1 FORTRAN=0
+            libxstream: header-only
+    env:
+      CC: gcc-${{ matrix.gcc }}
+      CXX: g++-${{ matrix.gcc }}
+      FC: gfortran-${{ matrix.gcc }}
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install GCC ${{ matrix.gcc }}
+      run: |
+        sudo apt update -y
+        sudo apt install -y gcc-${{ matrix.gcc }} g++-${{ matrix.gcc }}
+
+    - name: Install GNU Fortran ${{ matrix.gcc }}
+      if: matrix.libxstream != 'header-only'
+      run: sudo apt install -y gfortran-${{ matrix.gcc }}
+
+    - name: Install OpenBLAS
+      run: sudo apt install -y libopenblas-openmp-dev
+
+    - name: Install OpenCL
+      run: sudo apt install -y opencl-c-headers ocl-icd-libopencl1 ocl-icd-opencl-dev
+
+    - name: Build LIBXS
+      if: matrix.libxstream != 'header-only'
+      run: make -j $(nproc) ${{ matrix.flags }}
+
+    - name: Setup LIBXSTREAM
+      run: |
+        git clone --depth 1 https://github.com/hfp/libxstream.git ${{ github.workspace }}/../libxstream
+        echo "LIBXSTREAMROOT=${{ github.workspace }}/../libxstream" >> ${GITHUB_ENV}
+
+    - name: Build LIBXSTREAM
+      if: matrix.libxstream == 'prebuilt'
+      run: cd ${LIBXSTREAMROOT} && make -j $(nproc) ${{ matrix.flags }}
+
+    - name: Test
+      run: make -j $(nproc) ${{ matrix.flags }} test
+
+    - name: Install (PREFIX)
+      if: matrix.libxstream != 'header-only'
+      run: make -j $(nproc) ${{ matrix.flags }} install PREFIX=$HOME/libxs-install
+
+    - name: Verify install (PREFIX)
+      if: matrix.libxstream != 'header-only'
+      run: |
+        test -f $HOME/libxs-install/include/libxs/libxs.h
+        test -f $HOME/libxs-install/include/libxs/libxs_version.h
+        test -f $HOME/libxs-install/include/libxs/libxs_source.h
+        test -d $HOME/libxs-install/include/libxs/src
+        ls $HOME/libxs-install/lib/libxs.* >/dev/null
+        test -f $HOME/libxs-install/lib/cmake/libxs/libxsConfig.cmake
+
+    - name: Out-of-tree build and test
+      run: |
+        mkdir $HOME/libxs-oot && cd $HOME/libxs-oot
+        make -j $(nproc) -f ${{ github.workspace }}/Makefile ${{ matrix.flags }} test
+
+    - name: Build samples
+      if: matrix.libxstream == 'header-only'
+      run: make -j $(nproc) ${{ matrix.flags }} samples
+
+    - name: Upload
+      if: always() && contains(matrix.flags, 'UPLOAD=1')
+      run: make clean
+    - if: always() && contains(matrix.flags, 'UPLOAD=1')
+      uses: actions/upload-artifact@v5
+      with:
+        name: libxs-dbg
+        path: |
+          lib/
+          tests/*.x
+          samples/**/*.x
+
+  Debian:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install dependencies
+      run: |
+        sudo apt update -y
+        sudo apt install -y build-essential debhelper devscripts fakeroot gfortran
+
+    - name: Build Debian package
+      run: |
+        cp -a scripts/debian .
+        chmod +x debian/rules
+        dpkg-buildpackage -us -uc -b
+
+    - name: Verify Debian packages
+      run: |
+        dpkg-deb -c ../libxs0_*.deb
+        dpkg-deb -c ../libxs-dev_*.deb
+
+    - name: Collect packages
+      run: cp ../*.deb .
+
+    - name: Upload packages
+      uses: actions/upload-artifact@v5
+      with:
+        name: libxs-deb
+        path: "*.deb"
+
+  RPM:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install dependencies
+      run: dnf install -y rpm-build cmake cmake-rpm-macros ninja-build bash gcc gcc-gfortran flexiblas-devel
+
+    - name: Build RPM package
+      run: |
+        mkdir -p $HOME/rpmbuild/{SOURCES,SPECS}
+        cp scripts/fedora/libxs.spec $HOME/rpmbuild/SPECS/
+        VERSION=$(grep '^Version:' scripts/fedora/libxs.spec | awk '{print $2}')
+        tar czf $HOME/rpmbuild/SOURCES/libxs-${VERSION}.tar.gz \
+          --transform="s,^\.,libxs-${VERSION}," .
+        rpmbuild -ba $HOME/rpmbuild/SPECS/libxs.spec
+
+    - name: Upload packages
+      uses: actions/upload-artifact@v5
+      with:
+        name: libxs-rpm
+        path: ~/rpmbuild/RPMS/
+
+  CMake:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        gcc: [12, 14]
+        shared: [static, shared]
+    env:
+      CC: gcc-${{ matrix.gcc }}
+      CXX: g++-${{ matrix.gcc }}
+      FC: gfortran-${{ matrix.gcc }}
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Install GCC ${{ matrix.gcc }}
+      run: |
+        sudo apt update -y
+        sudo apt install -y gcc-${{ matrix.gcc }} g++-${{ matrix.gcc }} gfortran-${{ matrix.gcc }}
+
+    - name: Install OpenBLAS
+      run: sudo apt install -y libopenblas-openmp-dev
+
+    - name: Configure
+      run: |
+        cmake -B build \
+          -DCMAKE_BUILD_TYPE=Debug \
+          -DCMAKE_INSTALL_PREFIX=$HOME/libxs-install \
+          -DBUILD_TESTING=ON \
+          -DBUILD_SHARED_LIBS=${{ matrix.shared == 'shared' && 'ON' || 'OFF' }}
+
+    - name: Build
+      run: cmake --build build -j $(nproc)
+
+    - name: Test
+      run: cmake --build build --target libxs-check -j $(nproc)
+
+    - name: Install
+      run: cmake --install build
+
+    - name: Verify install
+      run: |
+        test -f $HOME/libxs-install/include/libxs/libxs.h
+        test -f $HOME/libxs-install/include/libxs/libxs.f
+        test -f $HOME/libxs-install/include/libxs/libxs_spec.fi
+        test -f $HOME/libxs-install/include/libxs/libxs_jit.F
+        test -f $HOME/libxs-install/include/libxs/libxs_source.h
+        test -d $HOME/libxs-install/include/libxs/src
+        ls $HOME/libxs-install/lib/libxs* >/dev/null
+        ls $HOME/libxs-install/lib/pkgconfig/libxs.pc >/dev/null
+        test -f $HOME/libxs-install/lib/cmake/libxs/libxsConfig.cmake
+        test -f $HOME/libxs-install/lib/cmake/libxs/libxsTargets.cmake
+        test -d $HOME/libxs-install/share/libxs
+
+    - name: Verify find_package
+      run: |
+        mkdir -p /tmp/test_find
+        cat > /tmp/test_find/CMakeLists.txt <<'EOF'
+        cmake_minimum_required(VERSION 3.13)
+        project(test_find C)
+        find_package(libxs CONFIG REQUIRED)
+        add_executable(test_find test_find.c)
+        target_link_libraries(test_find libxs::libxs)
+        EOF
+        cat > /tmp/test_find/test_find.c <<'EOF'
+        #include <libxs/libxs.h>
+        int main(void) { libxs_init(); libxs_finalize(); return 0; }
+        EOF
+        cmake -B /tmp/test_find/build -S /tmp/test_find \
+          -DCMAKE_PREFIX_PATH=$HOME/libxs-install
+        cmake --build /tmp/test_find/build
+        /tmp/test_find/build/test_find

@@ -1,0 +1,182 @@
+/******************************************************************************
+* Copyright (c) Intel Corporation - All rights reserved.                      *
+* This file is part of the LIBXS library.                                     *
+*                                                                             *
+* For information on the license, see the LICENSE file.                       *
+* Further information: https://github.com/hfp/libxs/                          *
+* SPDX-License-Identifier: BSD-3-Clause                                       *
+******************************************************************************/
+#ifndef LIBXS_MHD_H
+#define LIBXS_MHD_H
+
+#include "libxs.h"
+
+
+typedef enum libxs_mhd_element_conversion_hint_t {
+  LIBXS_MHD_ELEMENT_CONVERSION_DEFAULT,
+  LIBXS_MHD_ELEMENT_CONVERSION_MODULUS
+} libxs_mhd_element_conversion_hint_t;
+
+LIBXS_EXTERN_C typedef struct libxs_mhd_element_handler_info_t {
+  libxs_data_t type;
+  libxs_mhd_element_conversion_hint_t hint;
+} libxs_mhd_element_handler_info_t;
+
+/**
+ * Function type used for custom data-handler or element conversion.
+ * The value-range (src_min, src_max) may be used to scale values
+ * in case of a type-conversion.
+ */
+LIBXS_EXTERN_C typedef int (*libxs_mhd_element_handler_t)(void* dst,
+  const libxs_mhd_element_handler_info_t* dst_info, libxs_data_t src_type,
+  const void* src, const void* src_min, const void* src_max,
+  size_t index, void* context);
+
+/**
+ * Image descriptor containing metadata fields.
+ * Used by read_header (output), read, and write.
+ */
+LIBXS_EXTERN_C typedef struct libxs_mhd_info_t {
+  /** Dimensionality (in/out for read_header). */
+  size_t ndims;
+  /** Number of interleaved image channels. */
+  size_t ncomponents;
+  /** Element type (pixel type). */
+  libxs_data_t type;
+  /** Size of the header in bytes (for LOCAL data files). */
+  size_t header_size;
+} libxs_mhd_info_t;
+
+/**
+ * Optional parameters for libxs_mhd_write.
+ * A NULL pointer is accepted (all defaults: no conversion, no extension).
+ * Zero-initialize this struct to get safe defaults.
+ */
+LIBXS_EXTERN_C typedef struct libxs_mhd_write_info_t {
+  /** Destination type/hint for element conversion (NULL: no conversion). */
+  const libxs_mhd_element_handler_info_t* handler_info;
+  /** Custom per-element callback (NULL: use built-in conversion). */
+  libxs_mhd_element_handler_t handler;
+  /** User data passed to the custom per-element callback. */
+  void* handler_context;
+  /** Extension header text appended to the MHD header (NULL: none). */
+  const char* extension_header;
+  /** Extension data appended after the image data (NULL: none). */
+  const void* extension;
+  /** Size of extension data in bytes (0: none). */
+  size_t extension_size;
+} libxs_mhd_write_info_t;
+
+/**
+ * Predefined function to perform element data conversion.
+ * Scales source-values in case of non-NULL src_min and src_max,
+ * or otherwise clamps to the destination-type.
+ */
+LIBXS_API int libxs_mhd_element_conversion(void* dst,
+  const libxs_mhd_element_handler_info_t* dst_info, libxs_data_t src_type,
+  const void* src, const void* src_min, const void* src_max,
+  size_t index, void* context);
+
+/**
+ * Predefined function to check a buffer against file content.
+ * In case of different types, libxs_mhd_element_conversion
+ * is performed to compare values using the source-type.
+ */
+LIBXS_API int libxs_mhd_element_comparison(void* dst,
+  const libxs_mhd_element_handler_info_t* dst_info, libxs_data_t src_type,
+  const void* src, const void* src_min, const void* src_max,
+  size_t index, void* context);
+
+
+/** Returns the name of the element type; result may be NULL/0 in case of an unknown type. */
+LIBXS_API const char* libxs_mhd_typename(libxs_data_t type, const char** ctypename);
+
+/** Returns the type of the element for a given type-name, e.g., "MET_FLOAT". */
+LIBXS_API libxs_data_t libxs_mhd_typeinfo(const char elemname[]);
+
+
+/**
+ * Parse the header of an MHD-file. The header can be part of the data file (local),
+ * or separately stored (header: MHD, data MHA or RAW).
+ */
+LIBXS_API int libxs_mhd_read_header(
+  /* Filename referring to the header-file (may also contain the data). */
+  const char header_filename[],
+  /* Maximum length of path/file name. */
+  size_t filename_max_length,
+  /* Filename containing the data (may be the same as the header-file). */
+  char filename[],
+  /* Image descriptor (ndims is in/out: max on input, actual on output). */
+  libxs_mhd_info_t* info,
+  /* Image extents ("ndims" number of entries). */
+  size_t size[],
+  /* Post-content data (extension, optional). */
+  char extension[],
+  /* Size (in Bytes) of an user-defined extended data record;
+   * can be a NULL-argument (optional). */
+  size_t* extension_size);
+
+
+/**
+ * Loads the data file, and optionally allows data conversion.
+ * Conversion is performed such that values are clamped to fit
+ * into the destination.
+ */
+LIBXS_API int libxs_mhd_read(
+  /* Filename referring to the data. */
+  const char filename[],
+  /* Offset within pitched buffer (NULL: no offset). */
+  const size_t offset[],
+  /* Image dimensions (extents). */
+  const size_t size[],
+  /* Leading buffer dimensions (NULL: same as size). */
+  const size_t pitch[],
+  /* Image descriptor. */
+  const libxs_mhd_info_t* info,
+  /* Buffer where the data is read into. */
+  void* data,
+  /**
+   * Destination info including type. If given, data
+   * is type-converted (no custom handler necessary).
+   */
+  const libxs_mhd_element_handler_info_t* handler_info,
+  /**
+   * Optional callback executed per entry when reading the data.
+   * May assign the value to the left-most argument, but also
+   * allows to only compare with present data. Can be used to
+   * avoid allocating an actual destination.
+   */
+  libxs_mhd_element_handler_t handler,
+  void* handler_context);
+
+
+/**
+ * Save a file using an extended data format, which is compatible with the Meta Image Format (MHD).
+ * The file is suitable for visual inspection using, e.g., ITK-SNAP or ParaView.
+ */
+LIBXS_API int libxs_mhd_write(
+  /* Filename of the output file. */
+  const char filename[],
+  /* Offset within pitched buffer (NULL: no offset). */
+  const size_t offset[],
+  /* Image dimensions (extents). */
+  const size_t size[],
+  /* Leading buffer dimensions (NULL: same as size). */
+  const size_t pitch[],
+  /* Image descriptor (header_size is updated on output). */
+  libxs_mhd_info_t* info,
+  /* Raw data to be saved. */
+  const void* data,
+  /**
+   * Optional write parameters (conversion, handler, extension).
+   * NULL is accepted: no conversion, no extension.
+   */
+  const libxs_mhd_write_info_t* write_info);
+
+/* header-only: include implementation (deferred from libxs_macros.h) */
+#if defined(LIBXS_SOURCE) && !defined(LIBXS_SOURCE_H) \
+ && !defined(LIBXS_PREDICT_H)
+# include "libxs_source.h"
+#endif
+
+#endif /*LIBXS_MHD_H*/

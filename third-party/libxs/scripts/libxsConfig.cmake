@@ -1,0 +1,40 @@
+get_filename_component(_libxs_prefix "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
+
+set(_libxs_suffixes_save "${CMAKE_FIND_LIBRARY_SUFFIXES}")
+if(DEFINED BUILD_SHARED_LIBS AND NOT BUILD_SHARED_LIBS)
+  set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
+endif()
+find_library(LIBXS_LIBRARY NAMES xs HINTS "${_libxs_prefix}/lib" NO_DEFAULT_PATH)
+if(NOT LIBXS_LIBRARY)
+  set(CMAKE_FIND_LIBRARY_SUFFIXES "${_libxs_suffixes_save}")
+  find_library(LIBXS_LIBRARY NAMES xs HINTS "${_libxs_prefix}/lib" NO_DEFAULT_PATH)
+endif()
+set(CMAKE_FIND_LIBRARY_SUFFIXES "${_libxs_suffixes_save}")
+unset(_libxs_suffixes_save)
+find_path(LIBXS_INCLUDE_DIR NAMES libxs/libxs.h HINTS "${_libxs_prefix}/include" "${_libxs_prefix}" NO_DEFAULT_PATH)
+
+if(LIBXS_LIBRARY AND LIBXS_INCLUDE_DIR)
+  if(NOT TARGET libxs::libxs)
+    find_package(Threads QUIET)
+    set(_incdirs "${LIBXS_INCLUDE_DIR}")
+    if(EXISTS "${LIBXS_INCLUDE_DIR}/libxs/libxs.mod")
+      list(APPEND _incdirs "${LIBXS_INCLUDE_DIR}/libxs")
+    endif()
+    add_library(libxs::libxs UNKNOWN IMPORTED)
+    set_target_properties(libxs::libxs PROPERTIES
+      IMPORTED_LOCATION "${LIBXS_LIBRARY}"
+      INTERFACE_INCLUDE_DIRECTORIES "${_incdirs}")
+    if(TARGET Threads::Threads)
+      set_property(TARGET libxs::libxs APPEND PROPERTY
+        INTERFACE_LINK_LIBRARIES Threads::Threads)
+    endif()
+    unset(_incdirs)
+  else()
+    set_property(TARGET libxs::libxs PROPERTY
+      IMPORTED_LOCATION "${LIBXS_LIBRARY}")
+  endif()
+endif()
+
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(libxs DEFAULT_MSG LIBXS_LIBRARY LIBXS_INCLUDE_DIR)
+unset(_libxs_prefix)

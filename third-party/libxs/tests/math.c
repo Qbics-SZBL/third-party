@@ -1,0 +1,702 @@
+/******************************************************************************
+* Copyright (c) Intel Corporation - All rights reserved.                      *
+* This file is part of the LIBXS library.                                     *
+*                                                                             *
+* For information on the license, see the LICENSE file.                       *
+* Further information: https://github.com/hfp/libxs/                          *
+* SPDX-License-Identifier: BSD-3-Clause                                       *
+******************************************************************************/
+#include <libxs/libxs_utils.h>
+#include <libxs/libxs_rng.h>
+
+#if defined(_DEBUG)
+# define FPRINTF(STREAM, ...) do { fprintf(STREAM, __VA_ARGS__); } while(0)
+#else
+# define FPRINTF(STREAM, ...) do {} while(0)
+#endif
+
+#define N 1000000
+
+
+LIBXS_INLINE unsigned int ref_isqrt_u32(unsigned int u32)
+{
+  const unsigned int r = (unsigned int)(sqrt((double)u32) + 0.5);
+  return ((double)r * r) <= u32 ? r : (r - 1);
+}
+
+
+LIBXS_INLINE unsigned int ref_isqrt_u64(unsigned long long u64)
+{
+#if defined(__STDC_VERSION__) && (199901L <= __STDC_VERSION__) /*C99*/
+  const unsigned long long r = (unsigned long long)(sqrtl((long double)u64) + 0.5);
+#else
+  const unsigned long long r = (unsigned long long)(sqrt((double)u64) + 0.5);
+#endif
+  return (unsigned int)(((long double)r * r) <= u64 ? r : (r - 1));
+}
+
+
+LIBXS_INLINE unsigned int ref_ilog2_u32(unsigned int u32)
+{
+  return (unsigned int)ceil(LIBXS_LOG2(u32));
+}
+
+
+int main(int argc, char* argv[])
+{
+  const unsigned long long scale64 = ((unsigned long long)-1) / (RAND_MAX) - 1;
+  const unsigned int scale32 = ((unsigned int)-1) / (RAND_MAX) - 1;
+  int i, j;
+  LIBXS_UNUSED(argc); LIBXS_UNUSED(argv);
+
+  for (i = 0; i < (N); ++i) {
+    const int r1 = (0 != i ? rand() : 0), r2 = (1 < i ? rand() : 0);
+    const double rd = 2.0 * ((long long int)r1 * (r2 - RAND_MAX / 2)) / RAND_MAX;
+    const unsigned long long r64 = scale64 * r1;
+    const unsigned int r32 = scale32 * r1;
+    double d1, d2, e1, e2, e3;
+    unsigned int a, b;
+
+    if (LIBXS_NEQ(LIBXS_ROUND((double)r1), LIBXS_ROUNDX(double, (double)r1))) exit(EXIT_FAILURE);
+    if (LIBXS_NEQ(LIBXS_ROUND((double)r2), LIBXS_ROUNDX(double, (double)r2))) exit(EXIT_FAILURE);
+    if (LIBXS_NEQ(LIBXS_ROUND((double)rd), LIBXS_ROUNDX(double, (double)rd))) exit(EXIT_FAILURE);
+
+    if (LIBXS_NEQ(LIBXS_ROUNDF((float)r1), LIBXS_ROUNDX(float, (float)r1))) exit(EXIT_FAILURE);
+    if (LIBXS_NEQ(LIBXS_ROUNDF((float)r2), LIBXS_ROUNDX(float, (float)r2))) exit(EXIT_FAILURE);
+    if (LIBXS_NEQ(LIBXS_ROUNDF((float)rd), LIBXS_ROUNDX(float, (float)rd))) exit(EXIT_FAILURE);
+
+    a = libxs_isqrt_u32(r32);
+    b = ref_isqrt_u32(r32);
+    if (a != b) exit(EXIT_FAILURE);
+    a = libxs_isqrt_u64(r64);
+    b = ref_isqrt_u64(r64);
+    if (a != b) exit(EXIT_FAILURE);
+
+    d1 = 1.f / LIBXS_SQRTF(28.f);
+    e1 = LIBXS_FABS(1.0 / (d1 * d1) - 28.0);
+    d2 = 1.0 / sqrt(28.0);
+    e2 = LIBXS_FABS(1.0 / (d2 * d2) - 28.0);
+    if (e2 < e1) {
+      e3 = 0 < e2 ? (e1 / e2) : 0.f;
+      if (4E-06 < LIBXS_MIN(LIBXS_FABS(e1 - e2), e3)) {
+        exit(EXIT_FAILURE);
+      }
+    }
+
+    a = LIBXS_INTRINSICS_BITSCANFWD32(r32);
+    b = LIBXS_INTRINSICS_BITSCANFWD32_SW(r32);
+    if (a != b) exit(EXIT_FAILURE);
+    a = LIBXS_INTRINSICS_BITSCANBWD32(r32);
+    b = LIBXS_INTRINSICS_BITSCANBWD32_SW(r32);
+    if (a != b) exit(EXIT_FAILURE);
+
+    a = LIBXS_INTRINSICS_BITSCANFWD64(r64);
+    b = LIBXS_INTRINSICS_BITSCANFWD64_SW(r64);
+    if (a != b) exit(EXIT_FAILURE);
+    a = LIBXS_INTRINSICS_BITSCANBWD64(r64);
+    b = LIBXS_INTRINSICS_BITSCANBWD64_SW(r64);
+    if (a != b) exit(EXIT_FAILURE);
+
+    a = LIBXS_ILOG2(i);
+    b = ref_ilog2_u32(i);
+    if (0 != i && a != b) exit(EXIT_FAILURE);
+    a = LIBXS_ILOG2(r32);
+    b = ref_ilog2_u32(r32);
+    if (0 != r32 && a != b) exit(EXIT_FAILURE);
+
+    a = LIBXS_ISQRT2(i);
+    b = libxs_isqrt_u32(i);
+    if (a < LIBXS_DELTA(a, b)) exit(EXIT_FAILURE);
+    a = LIBXS_ISQRT2(r32);
+    b = libxs_isqrt_u32(r32);
+    if (a < LIBXS_DELTA(a, b)) exit(EXIT_FAILURE);
+    a = LIBXS_ISQRT2(r64);
+    b = libxs_isqrt_u64(r64);
+    if (0 != a/*u32-overflow*/ && a < LIBXS_DELTA(a, b)) exit(EXIT_FAILURE);
+  }
+
+  { /* further check LIBXS_INTRINSICS_BITSCANBWD32 */
+    const int npot[] = { 0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 65536 };
+    const int n = sizeof(npot) / sizeof(*npot);
+    for (i = 0; i < n; ++i) {
+      const int numpot = npot[i];
+      const int nbits = LIBXS_INTRINSICS_BITSCANBWD32(numpot);
+      const int num = nbits < numpot ? (1 << nbits) : nbits;
+      if (numpot != num) {
+        exit(EXIT_FAILURE);
+      }
+    }
+  }
+
+  { /* bit operations: specific tests */
+    unsigned int a, b;
+    a = LIBXS_INTRINSICS_BITSCANFWD64(0x2aaaab69ede0);
+    b = LIBXS_INTRINSICS_BITSCANFWD64_SW(0x2aaaab69ede0);
+    if (a != b) exit(EXIT_FAILURE);
+    /* values with no bits set in the low 32 bits (regression: was an infinite loop) */
+    b = LIBXS_INTRINSICS_BITSCANFWD64_SW(0x100000000ULL);
+    if (32 != b) exit(EXIT_FAILURE);
+    b = LIBXS_INTRINSICS_BITSCANFWD64_SW(0x8000000000000000ULL);
+    if (63 != b) exit(EXIT_FAILURE);
+    b = LIBXS_INTRINSICS_BITSCANFWD64_SW(0x4000000000ULL);
+    if (38 != b) exit(EXIT_FAILURE);
+  }
+
+  { /* check LIBXS_UP2POT and LIBXS_LO2POT */
+    const size_t a[] = { 0, 1, 10, 100, 127, 128, 129 };
+    const size_t b[] = { 0, 1, 16, 128, 128, 128, 256 };
+    const size_t c[] = { 0, 1,  8,  64,  64, 128, 128 };
+    const int n = sizeof(a) / sizeof(*a);
+    for (i = 0; i < n; ++i) {
+      if ((size_t)LIBXS_UP2POT(a[i]) != b[i]) exit(EXIT_FAILURE);
+      if ((size_t)LIBXS_LO2POT(a[i]) != c[i]) exit(EXIT_FAILURE);
+      if (LIBXS_ISPOT(a[i]) != (0 != a[i] && a[i] == (size_t)LIBXS_UP2POT(a[i]))) exit(EXIT_FAILURE);
+      if (LIBXS_ISPOT(a[i]) != (0 != a[i] && a[i] == (size_t)LIBXS_LO2POT(a[i]))) exit(EXIT_FAILURE);
+      if (LIBXS_ISPOT(b[i]) != (0 != b[i] && b[i] == (size_t)LIBXS_UP2POT(b[i]))) exit(EXIT_FAILURE);
+      if (LIBXS_ISPOT(b[i]) != (0 != b[i] && b[i] == (size_t)LIBXS_LO2POT(b[i]))) exit(EXIT_FAILURE);
+      if (LIBXS_ISPOT(c[i]) != (0 != c[i] && c[i] == (size_t)LIBXS_UP2POT(c[i]))) exit(EXIT_FAILURE);
+      if (LIBXS_ISPOT(c[i]) != (0 != c[i] && c[i] == (size_t)LIBXS_LO2POT(c[i]))) exit(EXIT_FAILURE);
+    }
+  }
+
+#if defined(INFINITY)
+  { /* check infinity */
+    const union { uint32_t raw; float value; } inf = { 0x7F800000U };
+    if (inf.value != INFINITY) exit(EXIT_FAILURE);
+  }
+#endif
+
+  { /* check LIBXS_UPDIV */
+    const int inp[] = { 0, 1, 3, 5, 127, 3000 };
+    const int out[] = { 0, 1, 1, 1,  19,  429 };
+    const int n = sizeof(inp) / sizeof(*inp);
+    for (i = 0; i < n; ++i) {
+      if (LIBXS_UPDIV(inp[i], 7) != out[i]) exit(EXIT_FAILURE);
+    }
+  }
+
+  { /* check LIBXS_UP */
+    const int inp[] = { 0, 1, 3, 5, 127, 3000 };
+    const int out[] = { 0, 7, 7, 7, 133, 3003 };
+    const int n = sizeof(inp) / sizeof(*inp);
+    for (i = 0; i < n; ++i) {
+      if (LIBXS_UP(inp[i], 7) != out[i]) exit(EXIT_FAILURE);
+    }
+  }
+
+  { /* check LIBXS_LO2 */
+    const int inp[] = { 0, 7, 8, 9, 127, 3000 };
+    const int out[] = { 0, 0, 8, 8, 120, 3000 };
+    const int n = sizeof(inp) / sizeof(*inp);
+    for (i = 0; i < n; ++i) {
+      if (LIBXS_LO2(inp[i], 8) != out[i]) exit(EXIT_FAILURE);
+    }
+  }
+
+  { /* check LIBXS_UP2 */
+    const int inp[] = { 0, 1, 3, 5, 127, 3000 };
+    const int out[] = { 0, 8, 8, 8, 128, 3000 };
+    const int n = sizeof(inp) / sizeof(*inp);
+    for (i = 0; i < n; ++i) {
+      if (LIBXS_UP2(inp[i], 8) != out[i]) exit(EXIT_FAILURE);
+    }
+  }
+
+  { /* check LIBXS_UPF */
+    const int inp[] = { 0, 1, 3, 5, 127, 3000 };
+    const int out[] = { 0, 1, 3, 5, 130, 3090 };
+    const int n = sizeof(inp) / sizeof(*inp);
+    for (i = 0; i < n; ++i) {
+      if (LIBXS_UPF(inp[i], 3, 100) != out[i]) exit(EXIT_FAILURE);
+      if (LIBXS_UPF(inp[i], -100, 100) != 0) exit(EXIT_FAILURE);
+    }
+  }
+
+  { /* check LIBXS_MAX / LIBXS_MIN */
+    if (LIBXS_MAX(3, 7) != 7) { FPRINTF(stderr, "ERROR line #%i: MAX(3,7)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (LIBXS_MAX(7, 3) != 7) { FPRINTF(stderr, "ERROR line #%i: MAX(7,3)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (LIBXS_MAX(-1, 0) != 0) { FPRINTF(stderr, "ERROR line #%i: MAX(-1,0)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (LIBXS_MIN(3, 7) != 3) { FPRINTF(stderr, "ERROR line #%i: MIN(3,7)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (LIBXS_MIN(-1, 0) != -1) { FPRINTF(stderr, "ERROR line #%i: MIN(-1,0)\n", __LINE__); exit(EXIT_FAILURE); }
+  }
+
+  { /* check LIBXS_SIGN */
+    if (LIBXS_SIGN(42) != 1) { FPRINTF(stderr, "ERROR line #%i: SIGN(42)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (LIBXS_SIGN(0) != 0) { FPRINTF(stderr, "ERROR line #%i: SIGN(0)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (LIBXS_SIGN(-7) != -1) { FPRINTF(stderr, "ERROR line #%i: SIGN(-7)\n", __LINE__); exit(EXIT_FAILURE); }
+  }
+
+  { /* check LIBXS_ABS */
+    if (LIBXS_ABS(42) != 42) { FPRINTF(stderr, "ERROR line #%i: ABS(42)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (LIBXS_ABS(0) != 0) { FPRINTF(stderr, "ERROR line #%i: ABS(0)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (LIBXS_ABS(-7) != 7) { FPRINTF(stderr, "ERROR line #%i: ABS(-7)\n", __LINE__); exit(EXIT_FAILURE); }
+  }
+
+  { /* check LIBXS_MOD / LIBXS_MOD2 */
+    if (LIBXS_MOD(10, 3) != 1) { FPRINTF(stderr, "ERROR line #%i: MOD(10,3)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (LIBXS_MOD(8, 4) != 0) { FPRINTF(stderr, "ERROR line #%i: MOD(8,4)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (LIBXS_MOD2(10, 8) != 2) { FPRINTF(stderr, "ERROR line #%i: MOD2(10,8)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (LIBXS_MOD2(16, 16) != 0) { FPRINTF(stderr, "ERROR line #%i: MOD2(16,16)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (LIBXS_MOD2(127, 64) != 63) { FPRINTF(stderr, "ERROR line #%i: MOD2(127,64)\n", __LINE__); exit(EXIT_FAILURE); }
+  }
+
+  { /* check LIBXS_CLMP (clamp) */
+    if (LIBXS_CLMP(5, 1, 10) != 5) { FPRINTF(stderr, "ERROR line #%i: CLMP in-range\n", __LINE__); exit(EXIT_FAILURE); }
+    if (LIBXS_CLMP(-3, 0, 10) != 0) { FPRINTF(stderr, "ERROR line #%i: CLMP below\n", __LINE__); exit(EXIT_FAILURE); }
+    if (LIBXS_CLMP(42, 0, 10) != 10) { FPRINTF(stderr, "ERROR line #%i: CLMP above\n", __LINE__); exit(EXIT_FAILURE); }
+    if (LIBXS_CLMP(0, 0, 0) != 0) { FPRINTF(stderr, "ERROR line #%i: CLMP degenerate\n", __LINE__); exit(EXIT_FAILURE); }
+  }
+
+  { /* check LIBXS_ISWAP */
+    int x = 11, y = 22;
+    LIBXS_ISWAP(x, y);
+    if (x != 22 || y != 11) { FPRINTF(stderr, "ERROR line #%i: ISWAP\n", __LINE__); exit(EXIT_FAILURE); }
+  }
+
+  { /* check LIBXS_FEQ / LIBXS_ISNAN / LIBXS_NOTNAN */
+    const double zero = 0.0;
+    if (!LIBXS_FEQ(1.0, 1.0)) { FPRINTF(stderr, "ERROR line #%i: FEQ equal\n", __LINE__); exit(EXIT_FAILURE); }
+    if ( LIBXS_FEQ(1.0, 2.0)) { FPRINTF(stderr, "ERROR line #%i: FEQ unequal\n", __LINE__); exit(EXIT_FAILURE); }
+#if defined(NAN)
+    if (!LIBXS_ISNAN(NAN)) { FPRINTF(stderr, "ERROR line #%i: ISNAN(NAN)\n", __LINE__); exit(EXIT_FAILURE); }
+    if ( LIBXS_NOTNAN(NAN)) { FPRINTF(stderr, "ERROR line #%i: NOTNAN(NAN)\n", __LINE__); exit(EXIT_FAILURE); }
+#endif
+    if ( LIBXS_ISNAN(zero)) { FPRINTF(stderr, "ERROR line #%i: ISNAN(0)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (!LIBXS_NOTNAN(1.0)) { FPRINTF(stderr, "ERROR line #%i: NOTNAN(1)\n", __LINE__); exit(EXIT_FAILURE); }
+  }
+
+  { /* check LIBXS_NEARBYINT / LIBXS_NEARBYINTF */
+    if (LIBXS_NEARBYINT(2.5) != 2.0 && LIBXS_NEARBYINT(2.5) != 3.0) {
+      FPRINTF(stderr, "ERROR line #%i: NEARBYINT(2.5)=%f\n", __LINE__, LIBXS_NEARBYINT(2.5));
+      exit(EXIT_FAILURE);
+    }
+    if (LIBXS_NEARBYINT(-0.5) != 0.0 && LIBXS_NEARBYINT(-0.5) != -1.0) {
+      FPRINTF(stderr, "ERROR line #%i: NEARBYINT(-0.5)=%f\n", __LINE__, LIBXS_NEARBYINT(-0.5));
+      exit(EXIT_FAILURE);
+    }
+    if (LIBXS_NEARBYINTF(2.5f) != 2.0f && LIBXS_NEARBYINTF(2.5f) != 3.0f) {
+      FPRINTF(stderr, "ERROR line #%i: NEARBYINTF(2.5)=%f\n", __LINE__, (double)LIBXS_NEARBYINTF(2.5f));
+      exit(EXIT_FAILURE);
+    }
+    if (LIBXS_NEARBYINT(3.7) != 4.0) {
+      FPRINTF(stderr, "ERROR line #%i: NEARBYINT(3.7)=%f\n", __LINE__, LIBXS_NEARBYINT(3.7));
+      exit(EXIT_FAILURE);
+    }
+    if (LIBXS_NEARBYINT(-3.7) != -4.0) {
+      FPRINTF(stderr, "ERROR line #%i: NEARBYINT(-3.7)=%f\n", __LINE__, LIBXS_NEARBYINT(-3.7));
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  { /* check GCD */
+    const size_t a[] = { 0, 1, 0, 100, 10 };
+    const size_t b[] = { 0, 0, 2, 10, 100 };
+    const size_t c[] = { 1, 1, 2, 10,  10 };
+    const int n = sizeof(a) / sizeof(*a);
+    for (i = 0; i < n; ++i) {
+      if (libxs_gcd(a[i], b[i]) != c[i]) exit(EXIT_FAILURE);
+      if (libxs_gcd(b[i], a[i]) != c[i]) exit(EXIT_FAILURE);
+    }
+  }
+
+  { /* check LCM */
+    if (libxs_lcm(4, 6) != 12) { FPRINTF(stderr, "ERROR line #%i: lcm(4,6)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (libxs_lcm(6, 4) != 12) { FPRINTF(stderr, "ERROR line #%i: lcm(6,4)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (libxs_lcm(0, 5) !=  0) { FPRINTF(stderr, "ERROR line #%i: lcm(0,5)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (libxs_lcm(5, 0) !=  0) { FPRINTF(stderr, "ERROR line #%i: lcm(5,0)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (libxs_lcm(0, 0) !=  0) { FPRINTF(stderr, "ERROR line #%i: lcm(0,0)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (libxs_lcm(7, 7) !=  7) { FPRINTF(stderr, "ERROR line #%i: lcm(7,7)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (libxs_lcm(1, 9) !=  9) { FPRINTF(stderr, "ERROR line #%i: lcm(1,9)\n", __LINE__); exit(EXIT_FAILURE); }
+    if (libxs_lcm(12, 18) != 36) { FPRINTF(stderr, "ERROR line #%i: lcm(12,18)\n", __LINE__); exit(EXIT_FAILURE); }
+    /* LCM of coprimes equals the product */
+    if (libxs_lcm(7, 13) != 91) { FPRINTF(stderr, "ERROR line #%i: lcm(7,13)\n", __LINE__); exit(EXIT_FAILURE); }
+  }
+
+  { /* check prime factorization */
+    const unsigned int test[] = { 0, 1, 2, 3, 5, 7, 12, 13, 24, 32, 2057, 120, 14, 997, 65519u * 65521u };
+    const int n = sizeof(test) / sizeof(*test);
+    unsigned int fact[32];
+    for (i = 0; i < n; ++i) {
+      const int np = libxs_primes_u32(test[i], fact, sizeof(fact) / sizeof(*fact));
+      for (j = 1; j < np; ++j) fact[0] *= fact[j];
+      if (0 < np && fact[0] != test[i]) {
+        exit(EXIT_FAILURE);
+      }
+    }
+  }
+
+  { /* check coprime routine */
+    const size_t test[] = { 0, 1, 2, 3, 5, 7, 12, 13, 24, 32, 2057, 120, 14, 997, 1024, 4096 };
+    const int n = sizeof(test) / sizeof(*test);
+    for (i = 0; i < n; ++i) {
+      for (j = 0; j <= (int)test[i]; ++j) {
+        const size_t coprime = libxs_coprime(test[i], j);
+        const size_t gcd = libxs_gcd(coprime, test[i]);
+        if ((0 != coprime || 1 < test[i]) && (test[i] <= coprime || 1 != gcd)) {
+          exit(EXIT_FAILURE);
+        }
+      }
+    }
+  }
+
+  { /* check coprime2 (coprime <= sqrt(n)) */
+    const size_t test[] = { 0, 1, 2, 3, 4, 7, 16, 25, 100, 1024, 4096 };
+    const int n = sizeof(test) / sizeof(*test);
+    for (i = 0; i < n; ++i) {
+      const size_t c2 = libxs_coprime2(test[i]);
+      if (1 < test[i]) {
+        const size_t s = libxs_isqrt_u64(test[i]);
+        if (0 == c2 || c2 > s || test[i] <= c2) {
+          FPRINTF(stderr, "ERROR line #%i: coprime2(%i)=%i sqrt=%i\n", __LINE__,
+            (int)test[i], (int)c2, (int)s);
+          exit(EXIT_FAILURE);
+        }
+        if (1 != libxs_gcd(c2, test[i])) {
+          FPRINTF(stderr, "ERROR line #%i: coprime2(%i) gcd\n", __LINE__, (int)test[i]);
+          exit(EXIT_FAILURE);
+        }
+      }
+      else {
+        if (0 != c2) {
+          FPRINTF(stderr, "ERROR line #%i: coprime2(%i) expected 0\n", __LINE__, (int)test[i]);
+          exit(EXIT_FAILURE);
+        }
+      }
+    }
+  }
+
+  { /* check libxs_remainder minimizing the remainder */
+    unsigned int lim, rem;
+    lim = 512;  if (libxs_remainder(23, 32, &lim, NULL) != (32 * 13)) exit(EXIT_FAILURE);
+    rem = 4;    if (libxs_remainder(23, 32, NULL, &rem) != (32 * 3)) exit(EXIT_FAILURE);
+    rem = 1;    if (libxs_remainder(23, 32, &lim, &rem) != (32 * 13)) exit(EXIT_FAILURE);
+    lim = 32;   if (libxs_remainder(23, 8, &lim, NULL) != (8 * 3)) exit(EXIT_FAILURE);
+    lim = 23;   if (libxs_remainder(23, 8, &lim, NULL) != (8 * 23)) exit(EXIT_FAILURE);
+    lim = 4;    if (libxs_remainder(23, 8, &lim, NULL) != (8 * 23)) exit(EXIT_FAILURE);
+    rem = 1;    if (libxs_remainder(0, 0, NULL, &rem) != 0) exit(EXIT_FAILURE);
+    if (libxs_remainder(23, 32, NULL, NULL) != (32 * 23)) exit(EXIT_FAILURE);
+    if (libxs_remainder(23, 8, NULL, NULL) != (8 * 23)) exit(EXIT_FAILURE);
+    if (libxs_remainder(23, 8, NULL, NULL) != (8 * 23)) exit(EXIT_FAILURE);
+    if (libxs_remainder(0, 32, NULL, NULL) != 0) exit(EXIT_FAILURE);
+    if (libxs_remainder(23, 0, NULL, NULL) != 0) exit(EXIT_FAILURE);
+    if (libxs_remainder(0, 0, NULL, NULL) != 0) exit(EXIT_FAILURE);
+  }
+
+  /* find upper limited product */
+  if (libxs_product_limit(12 * 5 * 7 * 11 * 13 * 17, 231, 0) != (3 * 7 * 11)) exit(EXIT_FAILURE);
+  if (libxs_product_limit(12 * 5 * 7, 32, 0) != (2 * 3 * 5)) exit(EXIT_FAILURE);
+  if (libxs_product_limit(12 * 13, 13, 0) != 13) exit(EXIT_FAILURE);
+  if (libxs_product_limit(12, 6, 0) != 6) exit(EXIT_FAILURE);
+  if (libxs_product_limit(0, 48, 0) != 0) exit(EXIT_FAILURE);
+  if (libxs_product_limit(0, 1, 0) != 0) exit(EXIT_FAILURE);
+  if (libxs_product_limit(0, 0, 0) != 0) exit(EXIT_FAILURE);
+  if (libxs_product_limit(1, 0, 0) != 0) exit(EXIT_FAILURE);
+
+  /* find lower limited product */
+  if (libxs_product_limit(12 * 5 * 7 * 11 * 13 * 17, 231, 1) != (3 * 7 * 11)) exit(EXIT_FAILURE);
+  if (libxs_product_limit(12 * 5 * 7, 36, 1) != (2 * 5 * 7)) exit(EXIT_FAILURE);
+  if (libxs_product_limit(23, 32, 1) != (2 * 23)) exit(EXIT_FAILURE);
+  if (libxs_product_limit(12, 32, 1) != (3 * 12)) exit(EXIT_FAILURE);
+  if (libxs_product_limit(12 * 13, 13, 1) != 13) exit(EXIT_FAILURE);
+  if (libxs_product_limit(320, 300, 1) != 320) exit(EXIT_FAILURE);
+  if (libxs_product_limit(320, 65, 1) != 80) exit(EXIT_FAILURE);
+  if (libxs_product_limit(320, 33, 1) != 64) exit(EXIT_FAILURE);
+  if (libxs_product_limit(1000, 6, 1) != 10) exit(EXIT_FAILURE);
+  if (libxs_product_limit(1000, 9, 1) != 10) exit(EXIT_FAILURE);
+  if (libxs_product_limit(12, 7, 1) != 12) exit(EXIT_FAILURE);
+  if (libxs_product_limit(5, 2, 1) != 5) exit(EXIT_FAILURE);
+  if (libxs_product_limit(5, 2, 0) != 1) exit(EXIT_FAILURE);
+  if (libxs_product_limit(0, 1, 1) != 0) exit(EXIT_FAILURE);
+  if (libxs_product_limit(0, 0, 1) != 0) exit(EXIT_FAILURE);
+  if (libxs_product_limit(1, 0, 1) != 0) exit(EXIT_FAILURE);
+
+  if (libxs_isqrt2_u32(1024) *  32 != 1024) exit(EXIT_FAILURE);
+  if (libxs_isqrt2_u32(1981) * 283 != 1981) exit(EXIT_FAILURE);
+  if (libxs_isqrt2_u32(2507) * 109 != 2507) exit(EXIT_FAILURE);
+  if (libxs_isqrt2_u32(1975) *  79 != 1975) exit(EXIT_FAILURE);
+
+  { /* exercise large-limit path (limit > LIBXS_PRODUCT_LIMIT=1024) */
+    unsigned int r;
+    r = libxs_product_limit(2u * 3 * 5 * 7 * 11 * 13, 1500, 0);
+    if (r > 1500) {
+      FPRINTF(stderr, "ERROR line #%i: product_limit(30030,1500,0)=%u > 1500\n", __LINE__, r);
+      exit(EXIT_FAILURE);
+    }
+    if (0 != (2u * 3 * 5 * 7 * 11 * 13) % r) {
+      FPRINTF(stderr, "ERROR line #%i: product_limit result %u not a factor\n", __LINE__, r);
+      exit(EXIT_FAILURE);
+    }
+    r = libxs_product_limit(2u * 3 * 5 * 7 * 11 * 13, 1500, 1);
+    if (r < 1500) {
+      FPRINTF(stderr, "ERROR line #%i: product_limit(30030,1500,1)=%u < 1500\n", __LINE__, r);
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  { /* check Kahan summation */
+    double acc = 0.0, comp = 0.0;
+    const int kn = 10000;
+    double naive = 0.0;
+    for (i = 0; i < kn; ++i) {
+      libxs_kahan_sum(1.0e-8, &acc, &comp);
+      naive += 1.0e-8;
+    }
+    /* Kahan result must be closer to the exact answer (1e-4) than naive sum */
+    if (LIBXS_FABS(acc - 1.0e-4) > LIBXS_FABS(naive - 1.0e-4)) {
+      FPRINTF(stderr, "ERROR line #%i: kahan less accurate than naive\n", __LINE__);
+      exit(EXIT_FAILURE);
+    }
+    if (LIBXS_FABS(acc - 1.0e-4) > 1.0e-14) {
+      FPRINTF(stderr, "ERROR line #%i: kahan acc=%.20e expected 1e-4\n", __LINE__, acc);
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  { /* check libxs_pow2: exact power-of-two scaling via IEEE-754 bit hack */
+    /* standard exponents */
+    if (LIBXS_NEQ(libxs_pow2(0), 1.0)) exit(EXIT_FAILURE);
+    if (LIBXS_NEQ(libxs_pow2(1), 2.0)) exit(EXIT_FAILURE);
+    if (LIBXS_NEQ(libxs_pow2(-1), 0.5)) exit(EXIT_FAILURE);
+    if (LIBXS_NEQ(libxs_pow2(10), 1024.0)) exit(EXIT_FAILURE);
+    if (LIBXS_NEQ(libxs_pow2(52), 4503599627370496.0)) exit(EXIT_FAILURE);
+    if (LIBXS_NEQ(libxs_pow2(-52), 1.0 / 4503599627370496.0)) exit(EXIT_FAILURE);
+    /* boundaries */
+    if (LIBXS_NEQ(libxs_pow2(1023), 8.9884656743115795e+307)) exit(EXIT_FAILURE);
+    if (LIBXS_NEQ(libxs_pow2(-1022), 2.2250738585072014e-308)) exit(EXIT_FAILURE);
+    /* underflow: subnormals flushed to zero */
+    if (LIBXS_NEQ(libxs_pow2(-1023), 0.0)) exit(EXIT_FAILURE);
+    if (LIBXS_NEQ(libxs_pow2(-2000), 0.0)) exit(EXIT_FAILURE);
+    /* overflow: returns +Inf */
+    if (LIBXS_NEQ(libxs_pow2(1024), libxs_pow2(1024))) { /* Inf == Inf */
+      exit(EXIT_FAILURE);
+    }
+    if (libxs_pow2(1024) <= 1.7976931348623157e+308) exit(EXIT_FAILURE); /* > DBL_MAX */
+    /* round-trip: 2^n * 2^(-n) == 1.0 for valid exponent range */
+    for (i = -1022; i <= 1022; ++i) {
+      if (LIBXS_NEQ(libxs_pow2(i) * libxs_pow2(-i), 1.0)) {
+        FPRINTF(stderr, "ERROR line #%i: pow2(%d)*pow2(%d) != 1.0\n", __LINE__, i, -i);
+        exit(EXIT_FAILURE);
+      }
+    }
+  }
+
+  { /* check libxs_mod_inverse_u32: modular inverse via extended Euclidean */
+    /* Small primes: a * a^(-1) == 1 (mod p) */
+    static const unsigned int primes[] = {
+      2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47,
+      53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
+      167, 173, 179, 181, 191, 193, 197, 199,
+      211, 223, 227, 229, 233, 239, 241, 251
+    };
+    const int nprimes = (int)(sizeof(primes) / sizeof(*primes));
+    for (i = 0; i < nprimes; ++i) {
+      const unsigned int p = primes[i];
+      unsigned int a;
+      for (a = 1; a < p; ++a) {
+        const unsigned int inv = libxs_mod_inverse_u32(a, p);
+        if ((a * inv) % p != 1) {
+          FPRINTF(stderr, "ERROR line #%i: %u * modinv(%u,%u)=%u != 1 (mod %u)\n",
+            __LINE__, a, a, p, inv, p);
+          exit(EXIT_FAILURE);
+        }
+      }
+    }
+    /* Specific spot-checks */
+    if (libxs_mod_inverse_u32(3, 7) != 5) exit(EXIT_FAILURE);   /* 3*5=15, 15%7=1 */
+    if (libxs_mod_inverse_u32(2, 251) != 126) exit(EXIT_FAILURE); /* 2*126=252, 252%251=1 */
+    /* Self-inverse: 1^(-1) == 1 and (m-1)^(-1) == (m-1) for any prime m */
+    for (i = 0; i < nprimes; ++i) {
+      const unsigned int p = primes[i];
+      if (libxs_mod_inverse_u32(1, p) != 1) exit(EXIT_FAILURE);
+      if (libxs_mod_inverse_u32(p - 1, p) != p - 1) exit(EXIT_FAILURE);
+    }
+    { /* Composite moduli (prime powers): a * a^(-1) == 1 (mod m) */ static const unsigned int composites[] = {
+        4, 8, 9, 16, 25, 27, 32, 49, 64, 81, 121, 125, 128, 243, 256
+      };
+      const int ncomp = (int)(sizeof(composites) / sizeof(*composites));
+      for (i = 0; i < ncomp; ++i) {
+        const unsigned int m = composites[i];
+        unsigned int a;
+        for (a = 1; a < m; ++a) {
+          /* skip if gcd(a, m) != 1 (quick check: a shares a factor with m) */
+          unsigned int g = a, h = m;
+          while (0 != h) { const unsigned int t = h; h = g % h; g = t; }
+          if (1 != g) continue;
+          { const unsigned int inv = libxs_mod_inverse_u32(a, m);
+            if ((a * inv) % m != 1) {
+              FPRINTF(stderr, "ERROR line #%i: %u * modinv(%u,%u)=%u != 1 (mod %u)\n",
+                __LINE__, a, a, m, inv, m);
+              exit(EXIT_FAILURE);
+            }
+          }
+        }
+      }
+    }
+    /* Cross-moduli spot-checks (coprime pairs, not primes) */
+    if (libxs_mod_inverse_u32(3, 128) != 43) exit(EXIT_FAILURE); /* 3*43=129, 129%128=1 */
+    if (libxs_mod_inverse_u32(128, 125) != 42) exit(EXIT_FAILURE); /* 128*42=5376, 5376%125=1 */
+    if (libxs_mod_inverse_u32(7, 81) != 58) exit(EXIT_FAILURE);  /* 7*58=406, 406%81=1 */
+  }
+
+  { /* check libxs_mod_u32/ libxs_mod_u64: Barrett and radix-split reduction */
+    static const unsigned int primes[] = {
+      2, 3, 5, 7, 11, 13, 167, 173, 179, 181, 191, 193, 197, 199,
+      211, 223, 227, 229, 233, 239, 241, 251
+    };
+    const int nprimes = (int)(sizeof(primes) / sizeof(*primes));
+    for (i = 0; i < nprimes; ++i) {
+      const unsigned int p = primes[i];
+      const unsigned int rcp = libxs_barrett_rcp(p);
+      const unsigned int pow18 = libxs_barrett_pow18(p);
+      const unsigned int pow36 = libxs_barrett_pow36(p);
+      unsigned int x32;
+      /* Verify precomputed constants */
+      if (rcp != (unsigned int)(0x100000000ULL / p)) {
+        FPRINTF(stderr, "ERROR line #%i: barrett_rcp(%u) mismatch\n",
+          __LINE__, p);
+        exit(EXIT_FAILURE);
+      }
+      if (pow18 != (unsigned int)((1UL << 18) % p)) {
+        FPRINTF(stderr, "ERROR line #%i: barrett_pow18(%u) mismatch\n",
+          __LINE__, p);
+        exit(EXIT_FAILURE);
+      }
+      if (pow36 != (unsigned int)(0x1000000000ULL % p)) {
+        FPRINTF(stderr, "ERROR line #%i: barrett_pow36(%u) mismatch\n",
+          __LINE__, p);
+        exit(EXIT_FAILURE);
+      }
+      /* 32-bit Barrett: check all remainders 0..p-1 and some large values */
+      for (x32 = 0; x32 < p * 2 + 17; ++x32) {
+        if (libxs_mod_u32(x32, p, rcp) != x32 % p) {
+          FPRINTF(stderr, "ERROR line #%i: mod_u32(%u, %u) = %u != %u\n",
+            __LINE__, x32, p, libxs_mod_u32(x32, p, rcp), x32 % p);
+          exit(EXIT_FAILURE);
+        }
+      }
+      { /* 64-bit radix-split: spot-check with mantissa-sized values */ static const uint64_t test64[] = {
+          0, 1, 262143ULL, 262144ULL, 262145ULL, /* around 2^18 */
+          (1ULL << 36) - 1, (1ULL << 36), (1ULL << 36) + 1,
+          (1ULL << 52) | 0xFFFFFFFFFFFFFULL, /* all-ones 53-bit */
+          (1ULL << 53) - 1, (1ULL << 53) /* max double mantissa */
+        };
+        int t;
+        for (t = 0; t < (int)(sizeof(test64) / sizeof(*test64)); ++t) {
+          const uint64_t v = test64[t];
+          const unsigned int got = libxs_mod_u64(v, p, rcp, pow18, pow36);
+          const unsigned int ref = (unsigned int)(v % p);
+          if (got != ref) {
+            FPRINTF(stderr,
+              "ERROR line #%i: mod_u64(0x%llx, %u) = %u != %u\n",
+              __LINE__, (unsigned long long)v, p, got, ref);
+            exit(EXIT_FAILURE);
+          }
+        }
+      }
+    }
+  }
+
+  { /* BF16 round-trip: libxs_round_bf16 and libxs_bf16_to_f64 */
+    { /* Test 1: zero round-trips exactly */ const libxs_bf16_t z = libxs_round_bf16(0.0);
+      if (0.0 != libxs_bf16_to_f64(z)) {
+        FPRINTF(stderr, "ERROR line #%i: BF16 zero round-trip\n", __LINE__);
+        exit(EXIT_FAILURE);
+      }
+    }
+    { /* Test 2: exact representable value (1.0) */ const libxs_bf16_t one = libxs_round_bf16(1.0);
+      if (1.0 != libxs_bf16_to_f64(one)) {
+        FPRINTF(stderr, "ERROR line #%i: BF16 1.0 round-trip\n", __LINE__);
+        exit(EXIT_FAILURE);
+      }
+    }
+    { /* Test 3: negative exact representable value (-2.0) */ const libxs_bf16_t m2 = libxs_round_bf16(-2.0);
+      if (-2.0 != libxs_bf16_to_f64(m2)) {
+        FPRINTF(stderr, "ERROR line #%i: BF16 -2.0 round-trip\n", __LINE__);
+        exit(EXIT_FAILURE);
+      }
+    }
+    { /* Test 4: round-to-nearest-even — 1.5 * 2^0 exactly representable */ const libxs_bf16_t h = libxs_round_bf16(1.5);
+      if (1.5 != libxs_bf16_to_f64(h)) {
+        FPRINTF(stderr, "ERROR line #%i: BF16 1.5 round-trip\n", __LINE__);
+        exit(EXIT_FAILURE);
+      }
+    }
+    { /* Test 5: value that requires rounding (pi) — check relative error < 2^-7 */ const double pi = 3.14159265358979323846;
+      const libxs_bf16_t bp = libxs_round_bf16(pi);
+      const double back = libxs_bf16_to_f64(bp);
+      const double relerr = (back - pi) / pi;
+      if (relerr < 0 ? -relerr > 0.01 : relerr > 0.01) {
+        FPRINTF(stderr, "ERROR line #%i: BF16 pi relerr=%g\n", __LINE__, relerr);
+        exit(EXIT_FAILURE);
+      }
+    }
+    /* Test 6: libxs_dekker_bf16 — sum of digits reconstructs original. */
+    { const double val = 3.14159265358979323846;
+      libxs_bf16_t digits[7];
+      double recon = 0.0;
+      int ns;
+      libxs_dekker_bf16(val, 7, digits);
+      for (ns = 0; ns < 7; ++ns) {
+        recon += libxs_bf16_to_f64(digits[ns]);
+      }
+      { const double err = val - recon;
+        if (err < 0 ? -err > 1e-15 : err > 1e-15) {
+          FPRINTF(stderr, "ERROR line #%i: dekker_bf16 residual=%g\n",
+            __LINE__, err);
+          exit(EXIT_FAILURE);
+        }
+      }
+    }
+    /* Test 6b: libxs_dekker_bf16 with 2 digits — error within BF16^2 precision */
+    { const double test_vals[] = { 1.23456789, -42.5, 1e-5, 1e10 };
+      const int nv = sizeof(test_vals) / sizeof(*test_vals);
+      int tv;
+      for (tv = 0; tv < nv; ++tv) {
+        libxs_bf16_t d2[2];
+        double recon;
+        libxs_dekker_bf16(test_vals[tv], 2, d2);
+        recon = libxs_bf16_to_f64(d2[0]) + libxs_bf16_to_f64(d2[1]);
+        if (0.0 != test_vals[tv]) {
+          const double rel = (recon - test_vals[tv]) / test_vals[tv];
+          if (rel < 0 ? -rel > 1e-4 : rel > 1e-4) {
+            FPRINTF(stderr, "ERROR line #%i: dekker_bf16(2) relerr=%g val=%g\n",
+              __LINE__, rel, test_vals[tv]);
+            exit(EXIT_FAILURE);
+          }
+        }
+      }
+    }
+    { /* Test 7: large and small magnitudes */ const double large = 1.0e30;
+      const double small_v = 1.0e-30;
+      const libxs_bf16_t bl = libxs_round_bf16(large);
+      const libxs_bf16_t bs = libxs_round_bf16(small_v);
+      const double rl = libxs_bf16_to_f64(bl);
+      const double rs = libxs_bf16_to_f64(bs);
+      /* Relative error must be within BF16's ~0.8% precision */
+      if (rl <= 0 || (large - rl) / large > 0.01 || (large - rl) / large < -0.01) {
+        FPRINTF(stderr, "ERROR line #%i: BF16 large magnitude\n", __LINE__);
+        exit(EXIT_FAILURE);
+      }
+      if (rs <= 0 || (small_v - rs) / small_v > 0.01 || (small_v - rs) / small_v < -0.01) {
+        FPRINTF(stderr, "ERROR line #%i: BF16 small magnitude\n", __LINE__);
+        exit(EXIT_FAILURE);
+      }
+    }
+    /* Test 8: random values — verify round-trip relative error bounded by 2^-7 */
+    for (i = 0; i < (N); ++i) {
+      const double v = 2.0 * ((double)rand() / RAND_MAX - 0.5) * 1e10;
+      const libxs_bf16_t b16 = libxs_round_bf16(v);
+      const double back = libxs_bf16_to_f64(b16);
+      if (0.0 != v) {
+        const double rel = (back - v) / v;
+        if (rel < 0 ? -rel > 0.01 : rel > 0.01) {
+          FPRINTF(stderr, "ERROR line #%i: BF16 random relerr=%g v=%g\n",
+            __LINE__, rel, v);
+          exit(EXIT_FAILURE);
+        }
+      }
+    }
+  }
+
+  return EXIT_SUCCESS;
+}

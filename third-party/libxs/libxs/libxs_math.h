@@ -1,0 +1,478 @@
+/******************************************************************************
+* Copyright (c) Intel Corporation - All rights reserved.                      *
+* This file is part of the LIBXS library.                                     *
+*                                                                             *
+* For information on the license, see the LICENSE file.                       *
+* Further information: https://github.com/hfp/libxs/                          *
+* SPDX-License-Identifier: BSD-3-Clause                                       *
+******************************************************************************/
+#ifndef LIBXS_MATH_H
+#define LIBXS_MATH_H
+
+#include "libxs.h"
+
+/**
+ * Maximum derivative order for Foeppl polynomial fingerprints.
+ * Orders 0..LIBXS_FPRINT_MAXORDER correspond to value, slope,
+ * curvature, and higher structural features.
+ */
+#if !defined(LIBXS_FPRINT_MAXORDER)
+# define LIBXS_FPRINT_MAXORDER 8
+#endif
+
+
+/**
+ * Structure of differences with matrix norms according
+ * to http://www.netlib.org/lapack/lug/node75.html).
+ */
+LIBXS_EXTERN_C typedef struct libxs_matdiff_t {
+  /** One-norm */         double norm1_abs, norm1_rel;
+  /** Infinity-norm */    double normi_abs, normi_rel;
+  /** Froebenius-norm */  double normf_rel;
+  /** Maximum difference, L2-norm (absolute and relative), and R-squared. */
+  double linf_abs, linf_rel, l2_abs, l2_rel, rsq;
+  /** Statistics: sum/l1, min., max., arith. avg., and variance. */
+  double l1_ref, min_ref, max_ref, avg_ref, var_ref;
+  /** Statistics: sum/l1, min., max., arith. avg., and variance. */
+  double l1_tst, min_tst, max_tst, avg_tst, var_tst;
+  /** Diagonal statistics: min and max of diagonal elements. */
+  double diag_min_ref, diag_max_ref, diag_min_tst, diag_max_tst;
+  /* Values(v_ref, v_tst) and location(m, n) of largest linf_abs. */
+  double v_ref, v_tst;
+  /** Cumulative weight for online mean. */
+  double w;
+  /**
+   * If r is non-zero (i is not negative), values (v_ref, v_tst),
+   * and the location (m, n) stem from the i-th reduction
+   * (r calls of libxs_matdiff_reduce) of the largest
+   * difference (libxs_matdiff_epsilon).
+   */
+  int m, n, i, r;
+} libxs_matdiff_t;
+
+/** Golden Section Search option flags (ORable). */
+typedef enum libxs_gss_flags_t {
+  LIBXS_GSS_DEFAULT        = 0,
+  LIBXS_GSS_EVAL_ENDPOINTS = 1
+} libxs_gss_flags_t;
+
+/** Golden Section Search result flags (ORable). */
+typedef enum libxs_gss_status_t {
+  LIBXS_GSS_STATUS_DEFAULT      = 0,
+  LIBXS_GSS_STATUS_ENDPOINT_MIN = 1,
+  LIBXS_GSS_STATUS_FLAT_MIN     = 2,
+  LIBXS_GSS_STATUS_LEFT_REFINED = 4,
+  LIBXS_GSS_STATUS_MAXITER      = 8,
+  LIBXS_GSS_STATUS_NO_BRACKET   = 16
+} libxs_gss_status_t;
+
+/** Golden Section Search diagnostics. */
+LIBXS_EXTERN_C typedef struct libxs_gss_info_t {
+  /** Consistency score for a single valley. */
+  double unimodality;
+  /** Final minimizer and value. */
+  double xmin, fmin;
+  /** Final bracket. */
+  double x0, x1;
+  /** Function evaluations performed. */
+  int evaluations;
+  /** Iterations performed. */
+  int iterations;
+  /** ORed libxs_gss_status_t values. */
+  int status;
+} libxs_gss_info_t;
+
+/** BF16 storage type (raw uint16_t encoding: 1 sign + 8 exponent + 7 fraction). */
+typedef uint16_t libxs_bf16_t;
+
+
+/**
+ * Utility function to calculate a collection of scalar differences between two matrices (libxs_matdiff_t).
+ * The location (m, n) of the largest difference (linf_abs) is recorded (also in case of NaN). In case of NaN,
+ * differences are set to infinity. If no difference is discovered, the location (m, n) is negative (OOB).
+ * The return value does not judge the difference (norm) between reference and test data, but is about
+ * missing support for the requested data-type or otherwise invalid input.
+ */
+LIBXS_API int libxs_matdiff(libxs_matdiff_t* info,
+  libxs_data_t datatype, int m, int n, const void* ref, const void* tst,
+  const int* ldref, const int* ldtst);
+
+/**
+ * Combine absolute and relative norms into a value which can be used to check against a margin.
+ * A file or directory path given per environment variable LIBXS_MATDIFF=/path/to/file stores
+ * the epsilon (followed by a line-break), which can be used to calibrate margins of a test case.
+ * LIBXS_MATDIFF can carry optional space-separated arguments used to amend the file entry.
+ */
+LIBXS_API double libxs_matdiff_epsilon(const libxs_matdiff_t* input);
+/**
+ * Combine two single-matrix infos (each from libxs_matdiff with ref=NULL)
+ * into a meta-diff. Output supplies the "reference" side and input the
+ * "test" side. Per-side statistics (l1, min, max, avg, var) are exact.
+ * Difference norms are summary bounds:
+ *   linf_abs = |avg_ref - avg_tst| (mean shift),
+ *   l2_abs   = sqrt(var_ref + var_tst) (statistical bound).
+ * Element-wise norms (norm1, normi, normf_rel) are set to zero.
+ * No-op if neither side is a single-matrix info.
+ * Returns EXIT_FAILURE if input is not a single-matrix info.
+ */
+LIBXS_API int libxs_matdiff_combine(libxs_matdiff_t* output, const libxs_matdiff_t* input);
+/**
+ * Reduces input into output such that the difference is maintained or increased (max function).
+ * The very first (initial) output should be zeroed (libxs_matdiff_clear).
+ */
+LIBXS_API void libxs_matdiff_reduce(libxs_matdiff_t* output, const libxs_matdiff_t* input);
+/** Clears the given info-structure, e.g., for the initial reduction-value (libxs_matdiff_reduce). */
+LIBXS_API void libxs_matdiff_clear(libxs_matdiff_t* info);
+
+/**
+ * Necessary condition for positive definiteness: all diagonal elements are positive.
+ * Checks the test-side diagonal (tst); for single-matrix info (ref=NULL) the matrix
+ * is on the tst-side after the internal swap. Returns the smallest diagonal element
+ * (positive means the condition holds), or zero if no diagonal data is available.
+ */
+LIBXS_API_INLINE double libxs_matdiff_posdef(const libxs_matdiff_t* info) {
+  return (NULL != info && info->diag_min_tst <= info->diag_max_tst)
+    ? info->diag_min_tst : 0;
+}
+
+/**
+ * Order-independent multiset distance between a[na] and b[nb]:
+ * counts elements that cannot be matched within the given tolerance.
+ * Two elements match if their absolute difference does not exceed tol.
+ * The distance satisfies metric properties (symmetry, non-negativity,
+ * identity of indiscernibles). Complex types use modulus for comparison.
+ */
+LIBXS_API int libxs_setdiff(
+  libxs_data_t datatype, const void* a, int na,
+  const void* b, int nb, double tol);
+
+/**
+ * Minimize the multiset distance (libxs_setdiff) over all tolerances
+ * using Golden Section Search (libxs_gss_min). Returns the minimum
+ * unmatched count; *tol optionally receives the smallest tolerance
+ * achieving this minimum (may be NULL).
+ * Supported types: F64, F32, C64, C32 (not integer types).
+ */
+LIBXS_API int libxs_setdiff_min(
+  libxs_data_t datatype, const void* a, int na,
+  const void* b, int nb, double* tol);
+
+/** Foeppl polynomial fingerprint: per-derivative-order norms. */
+LIBXS_EXTERN_C typedef struct libxs_fprint_t {
+  /** Per-order L2 norm (k = 0..order). */
+  double l2[LIBXS_FPRINT_MAXORDER + 1];
+  /** Per-order L1 norm (sum of absolute values). */
+  double l1[LIBXS_FPRINT_MAXORDER + 1];
+  /** Per-order Linf (max absolute value). */
+  double linf[LIBXS_FPRINT_MAXORDER + 1];
+  /** Per-order signed mean (sum / count, preserves sign and phase). */
+  double mean[LIBXS_FPRINT_MAXORDER + 1];
+  /** Streaming accumulators (un-normalized): sum of squares per order. */
+  double acc_sq[LIBXS_FPRINT_MAXORDER + 1];
+  /** Streaming accumulators: sum of absolute values per order. */
+  double acc_abs[LIBXS_FPRINT_MAXORDER + 1];
+  /** Streaming accumulators: signed sum per order. */
+  double acc_sum[LIBXS_FPRINT_MAXORDER + 1];
+  /** Tail values at each derivative level for junction bridging. */
+  double tail[LIBXS_FPRINT_MAXORDER + 1];
+  /** Derivative orders used and original data length. */
+  int order, n;
+  /** Number of difference values accumulated per order. */
+  int nk[LIBXS_FPRINT_MAXORDER + 1];
+  /** Discovered or given data type. */
+  libxs_data_t datatype;
+} libxs_fprint_t;
+
+typedef enum libxs_fprint_flags_t {
+  LIBXS_FPRINT_DEFAULT  = 0,
+  LIBXS_FPRINT_SORT     = 1,
+  LIBXS_FPRINT_AUTOCORR = 2,
+  LIBXS_FPRINT_PERAXIS  = 4
+} libxs_fprint_flags_t;
+
+/**
+ * Foeppl polynomial fingerprint for n-dimensional data.
+ * For 1-D data, builds per-derivative-order norms (L2, L1, Linf)
+ * normalized to the unit interval [0,1] so that fingerprints of
+ * different lengths are directly comparable.
+ * stride[] gives the element step for each dimension (NULL: contiguous,
+ * i.e., stride[0]=1, stride[k]=product of shape[0..k-1]).
+ * Order is clamped to min(order, extent-1, LIBXS_FPRINT_MAXORDER).
+ * Supported types: F64, F32 (integer types are promoted).
+ *
+ * axis:   dimension index, only used when LIBXS_FPRINT_PERAXIS is set.
+ * smooth: box-filter radius applied before differencing (0 = off).
+ * flags:  bitwise OR of LIBXS_FPRINT_SORT, LIBXS_FPRINT_AUTOCORR,
+ *         and LIBXS_FPRINT_PERAXIS.
+ * Default (axis=0, smooth=0, flags=0) gives hierarchical mode.
+ */
+LIBXS_API int libxs_fprint(libxs_fprint_t* info,
+  libxs_data_t datatype, const void* data,
+  int ndims, const size_t shape[], const size_t stride[],
+  int order, int axis, int smooth, unsigned int flags);
+
+/**
+ * Streaming (partial/incremental) fingerprint accumulation.
+ * First call: pass a zeroed info with order set to desired maximum.
+ * Subsequent calls: pass the same info with the next chunk of data.
+ * Each call updates the accumulators (acc_sq, acc_abs, acc_sum, linf)
+ * and maintains tail values for exact junction differences.
+ * The normalized fields (l2, l1, mean) are updated after each call
+ * so that libxs_fprint_diff can be used at any point.
+ * Only 1-D contiguous data is supported (ndims=1, stride=NULL).
+ */
+LIBXS_API int libxs_fprint_partial(libxs_fprint_t* info,
+  libxs_data_t datatype, const void* data, int n, int order);
+
+/**
+ * Approximate merge of two finalized fingerprints.
+ * Combines a and b into output using length-weighted statistics:
+ *   l2  = sqrt((a.acc_sq + b.acc_sq) / (na + nb - 1))
+ *   l1  = (a.acc_abs + b.acc_abs) / (na + nb - 1)
+ *   mean = (a.acc_sum + b.acc_sum) / (na + nb - k)
+ *   linf = max(a.linf, b.linf)
+ * Junction derivatives are not recomputed (error ~ order/min(na,nb)).
+ * If accumulators are not populated (legacy fprint), falls back to
+ * weighted-average approximation using the normalized fields.
+ */
+LIBXS_API int libxs_fprint_join(libxs_fprint_t* output,
+  const libxs_fprint_t* a, const libxs_fprint_t* b);
+
+/**
+ * Weighted Sobolev distance between two fingerprints:
+ *   d = sqrt(sum_k w_k * [(a->l2[k] - b->l2[k])^2
+ *                        + (a->mean[k] - b->mean[k])^2]).
+ * The signed mean breaks collisions from negation and reflection.
+ * The number of orders used is min(a->order, b->order) + 1.
+ * If weights is NULL, default weights w_k = 1/(k!) are used.
+ */
+LIBXS_API double libxs_fprint_diff(
+  const libxs_fprint_t* a, const libxs_fprint_t* b,
+  const double weights[]);
+
+/**
+ * Recover unnormalized (raw) value from a fingerprint norm at order k.
+ * The fingerprint stores norms of derivatives scaled to the unit
+ * interval: internally each difference divides by h = 1/(n-1),
+ * so the stored value at order k is (n-1)^k times the raw
+ * finite difference.  This helper undoes that scaling.
+ * For k == 0, returns the value unchanged.
+ */
+LIBXS_API double libxs_fprint_raw(
+  const libxs_fprint_t* info, int k, double value);
+
+/**
+ * Geometric-mean per-order decay ratio of a fingerprint:
+ *   r = (l2[K] / l2[0])^(1/K).
+ * Decaying fingerprints have r < 1; noise/random data has r > 1.
+ */
+LIBXS_API double libxs_fprint_decay(const libxs_fprint_t* info);
+
+/**
+ * Generalized binomial coefficient C(t, k) for real-valued t:
+ *   C(t, k) = t * (t-1) * ... * (t-k+1) / k!
+ * Evaluates the Newton basis polynomial at position t.
+ * For integer t >= k >= 0 this equals the standard binomial coefficient.
+ */
+LIBXS_API double libxs_binom(double t, int k);
+
+/**
+ * Squared Euclidean distance between two n-dimensional vectors.
+ * Returns sum_i (a[i] - b[i])^2.
+ */
+LIBXS_API double libxs_dist2(const double* a, const double* b, int n);
+
+/** Greatest common divisor (corner case: the GCD of 0 and 0 is 1). */
+LIBXS_API size_t libxs_gcd(size_t a, size_t b);
+/** Least common multiple. */
+LIBXS_API size_t libxs_lcm(size_t a, size_t b);
+
+/**
+ * This function finds prime-factors of an unsigned integer in ascending order, and
+ * returns the number of factors found (zero if the given number is prime and unequal to two).
+ * The output array must have at least num_factors_max elements.
+ */
+LIBXS_API int libxs_primes_u32(unsigned int num, unsigned int num_factors_n32[], int num_factors_max);
+
+/** Co-prime R of N such that R <= MinCo (libxs_coprime(0|1, x) == 0). */
+LIBXS_API size_t libxs_coprime(size_t n, size_t minco);
+/**
+ * Co-prime of N selected by bias in [-1, +1].
+ * bias=-1: smallest non-trivial coprime (maximum displacement).
+ * bias= 0: coprime near SQRT(N) (balanced).
+ * bias=+1: coprime near N/2 (near-alternation).
+ * The mapping is logarithmic: target = N^((1+bias)/2).
+ */
+LIBXS_API size_t libxs_coprime_bias(size_t n, double bias);
+/** Co-prime R of N near SQRT(N); equivalent to libxs_coprime_bias(n, 0). */
+LIBXS_API_INLINE size_t libxs_coprime2(size_t n) { return libxs_coprime_bias(n, 0.0); }
+
+/**
+ * Minimizes the waste, if "a" can only be processed in multiples of "b".
+ * The remainder r is such that ((i * b) % a) <= r with i := {1, ..., a}.
+ * Return value of this function is (i * b) with i := {1, ..., a}.
+ * Remainder and limit are considered for early-exit and relaxation.
+ * If the remainder is not given (NULL), it is assumed to be zero.
+ * For example: libxs_remainder(23, 8, NULL, NULL) => 184.
+ */
+LIBXS_API unsigned int libxs_remainder(unsigned int a, unsigned int b,
+  /** Optional limit such that (i * b) <= limit or ((i * b) % a) <= r. */
+  const unsigned int* limit,
+  /** Optional remainder limiting ((i * b) % a) <= r. */
+  const unsigned int* remainder);
+
+/**
+ * Divides the product into prime factors and selects factors such that the new product is within
+ * the given limit (0/1-Knapsack problem), e.g., product=12=2*2*3 and limit=6 then result=2*3=6.
+ * The limit is at least reached or exceeded with the minimal possible product (is_lower=true).
+ */
+LIBXS_API unsigned int libxs_product_limit(unsigned int product, unsigned int limit, int is_lower);
+
+/* Kahan's summation returns accumulator += value and updates compensation. */
+LIBXS_API double libxs_kahan_sum(double value, double* accumulator, double* compensation);
+
+/**
+ * Golden Section Search for the minimum of a unimodal function f on [x0, x1].
+ * The function f is evaluated via a callback; context is forwarded opaquely.
+ * Returns f(x*) where x* is the minimizer; *xmin optionally receives x*
+ * (may be NULL). Converges when the bracket width reaches zero or maxiter
+ * iterations are exhausted. The flags control endpoint evaluation; the optional
+ * info receives diagnostics.
+ */
+LIBXS_API double libxs_gss_min(
+  double (*fn)(double x, const void* data), const void* data,
+  double x0, double x1, double* xmin, int maxiter,
+  int flags, double ftol, libxs_gss_info_t* info);
+
+/**
+ * Bisection search for the left edge of a known minimum level on [x0, x1].
+ * The caller supplies fmin, and fn(x1) is expected to reach fmin. If the
+ * bracket is invalid, info->status includes LIBXS_GSS_STATUS_NO_BRACKET.
+ */
+LIBXS_API double libxs_bisect_min(
+  double (*fn)(double x, const void* data), const void* data,
+  double x0, double x1, double fmin, double* xmin, int maxiter,
+  double ftol, libxs_gss_info_t* info);
+
+/** SQRT with Newton's method using integer arithmetic. */
+LIBXS_API unsigned int libxs_isqrt_u64(unsigned long long x);
+/** SQRT with Newton's method using integer arithmetic. */
+LIBXS_API unsigned int libxs_isqrt_u32(unsigned int x);
+/** Based on libxs_isqrt_u32; result is factor of x. */
+LIBXS_API unsigned int libxs_isqrt2_u32(unsigned int x);
+
+/**
+ * Construct a double with value 2^n by manipulating the IEEE-754 exponent
+ * field directly. Valid for n in [-1022, 1023]; returns 0.0 for underflow
+ * and +Inf for overflow. Subnormals (n < -1022) are flushed to zero.
+ */
+LIBXS_API double libxs_pow2(int n);
+
+/**
+ * Modular inverse via extended Euclidean algorithm: a^{-1} mod m.
+ * Requires gcd(a, m) = 1 and 0 < a, 1 < m.
+ */
+LIBXS_API unsigned int libxs_mod_inverse_u32(unsigned int a, unsigned int m);
+LIBXS_API size_t libxs_mod_inverse(size_t a, size_t m);
+
+/**
+ * Barrett reciprocal for a 32-bit modulus: floor(2^32 / p).
+ * Used by libxs_mod_u32 and libxs_mod_u64 for fast reduction.
+ */
+LIBXS_API unsigned int libxs_barrett_rcp(unsigned int p);
+/**
+ * Radix-split power table entry: (1 << 18) mod p.
+ * Used by libxs_mod_u64 for 64-bit reduction via radix-2^18 split.
+ */
+LIBXS_API unsigned int libxs_barrett_pow18(unsigned int p);
+/**
+ * Radix-split power table entry: (1 << 36) mod p.
+ * Used by libxs_mod_u64 for 64-bit reduction via radix-2^18 split.
+ */
+LIBXS_API unsigned int libxs_barrett_pow36(unsigned int p);
+
+
+/**
+ * Round a double-precision value to BF16 (round-to-nearest-even).
+ * When LIBXS_BF16 is defined, the compiler's native __bf16 cast is used;
+ * otherwise a portable uint32 bit-manipulation path is taken.
+ */
+LIBXS_API_INLINE libxs_bf16_t libxs_round_bf16(double x) {
+#if defined(LIBXS_BF16)
+  union { __bf16 h; uint16_t u; } cvt;
+  cvt.h = (__bf16)x;
+  return cvt.u;
+#else
+  union { float f; uint32_t u; } cvt;
+  cvt.f = (float)x;
+  cvt.u = (cvt.u + 0x7FFFU + ((cvt.u >> 16) & 1U)) & 0xFFFF0000U;
+  return (libxs_bf16_t)(cvt.u >> 16);
+#endif
+}
+
+/** Expand a BF16 encoding to double (exact). */
+LIBXS_API_INLINE double libxs_bf16_to_f64(libxs_bf16_t v) {
+#if defined(LIBXS_BF16)
+  union { uint16_t u; __bf16 h; } cvt;
+  cvt.u = v;
+  return (double)cvt.h;
+#else
+  union { uint32_t u; float f; } cvt;
+  cvt.u = (uint32_t)v << 16;
+  return (double)cvt.f;
+#endif
+}
+
+/**
+ * Dekker split: decompose a value into ndigits BF16 residuals.
+ * dst[0] holds the dominant digit, dst[ndigits-1] the finest.
+ */
+LIBXS_API_INLINE void libxs_dekker_bf16(double val, int ndigits,
+  libxs_bf16_t* dst)
+{
+  double residual = val;
+  int s;
+  for (s = 0; s < ndigits; ++s) {
+    const libxs_bf16_t bf = libxs_round_bf16(residual);
+    dst[s] = bf;
+    residual -= libxs_bf16_to_f64(bf);
+  }
+}
+
+/**
+ * Fast 32-bit modular reduction via Barrett's method.
+ * Returns x mod p using a precomputed reciprocal rcp = floor(2^32/p).
+ * Valid for x < 2^32.
+ */
+LIBXS_API_INLINE unsigned int libxs_mod_u32(uint32_t x, unsigned int p,
+  unsigned int rcp)
+{
+  const uint32_t q = (uint32_t)(((uint64_t)x * rcp) >> 32);
+  uint32_t r = x - q * (uint32_t)p;
+  if (r >= (uint32_t)p) r -= (uint32_t)p;
+  return (unsigned int)r;
+}
+
+/**
+ * Fast 64-bit modular reduction via radix-2^18 split and Barrett.
+ * Decomposes x into three 18-bit chunks and recombines mod p:
+ *   (a2*pow36 + a1*pow18 + a0) mod p
+ * using the 32-bit Barrett libxs_mod_u32.
+ * Valid for x < 2^54 and p < 8192 (ensures intermediate sum < 2^32).
+ */
+LIBXS_API_INLINE unsigned int libxs_mod_u64(uint64_t x, unsigned int p,
+  unsigned int rcp, unsigned int pow18, unsigned int pow36)
+{
+  const uint32_t a0 = (uint32_t)(x & 0x3FFFFU);
+  const uint32_t a1 = (uint32_t)((x >> 18) & 0x3FFFFU);
+  const uint32_t a2 = (uint32_t)(x >> 36);
+  return libxs_mod_u32(a2 * pow36 + a1 * pow18 + a0, p, rcp);
+}
+
+/* header-only: include implementation (deferred from libxs_macros.h) */
+#if defined(LIBXS_SOURCE) && !defined(LIBXS_SOURCE_H) \
+ && !defined(LIBXS_RNG_H) && !defined(LIBXS_PREDICT_H)
+# include "libxs_source.h"
+#endif
+
+#endif /*LIBXS_MATH_H*/
