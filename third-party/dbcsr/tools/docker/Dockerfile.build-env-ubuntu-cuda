@@ -1,0 +1,71 @@
+FROM nvidia/cuda:12.2.0-devel-ubuntu22.04
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN set -ex ; \
+    apt-get update ; \
+    apt-get install -y \
+        apt-transport-https \
+        ca-certificates \
+        gnupg \
+        software-properties-common \
+        curl \
+        ; \
+    curl -LsS https://apt.kitware.com/keys/kitware-archive-latest.asc \
+        | gpg --dearmor - \
+        | tee /etc/apt/trusted.gpg.d/kitware.gpg >/dev/null ; \
+    apt-add-repository 'deb https://apt.kitware.com/ubuntu/ jammy main' ; \
+    apt-get install -y \
+        locales \
+        gfortran \
+        g++ \
+        openmpi-bin \
+        libopenmpi-dev \
+        mpich \
+        libmpich-dev \
+        libopenblas-openmp-dev \
+        cmake \
+        ninja-build \
+        lcov \
+        pkg-config \
+        git \
+        python3-pip \
+        unzip \
+        rsync \
+        valgrind \
+        ; \
+    rm -rf /var/lib/apt/lists/* ; \
+    localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
+
+# Make sure we have a proper unicode locale and language
+ENV LANG en_US.utf8
+
+RUN set -ex ; \
+    pip3 install \
+        pre-commit \
+        ford \
+        git-archive-all \
+        ;
+
+RUN set -ex ; \
+    apt-get update ; \
+    apt-get install -y --no-install-recommends opencl-c-headers ocl-icd-libopencl1 ; \
+    rm -rf /var/lib/apt/lists/*
+
+ARG libxs_version=11348a69c6b8622f9192ec725b291f42384a5ce7
+ARG libxstream_version=8375c018d0619bfd9261f67b9ed8b609d8e4ff66
+
+RUN set -ex ; \
+    curl -LsS https://github.com/hfp/libxs/archive/${libxs_version}.tar.gz | tar -xz -C /opt ; \
+    ln -s libxs-${libxs_version} /opt/libxs ; \
+    make -j -C /opt/libxs
+
+RUN set -ex ; \
+    curl -LsS https://github.com/hfp/libxstream/archive/${libxstream_version}.tar.gz | tar -xz -C /opt ; \
+    ln -s libxstream-${libxstream_version} /opt/libxstream ; \
+    make -j -C /opt/libxstream LIBXSROOT=/opt/libxs
+
+ENV PKG_CONFIG_PATH="/opt/libxstream/lib/pkgconfig:/opt/libxs/lib/pkgconfig:${PKG_CONFIG_PATH}"
+
+# Leak suppression
+COPY lsan.supp /opt
+ENV LSAN_OPTIONS=suppressions=/opt/lsan.supp

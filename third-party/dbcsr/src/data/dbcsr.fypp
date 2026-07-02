@@ -1,0 +1,168 @@
+#!--------------------------------------------------------------------------------------------------!
+#! Copyright (C) by the DBCSR developers group - All rights reserved                                !
+#! This file is part of the DBCSR library.                                                          !
+#!                                                                                                  !
+#! For information on the license, see the LICENSE file.                                            !
+#! For further information please visit https://dbcsr.cp2k.org                                      !
+#! SPDX-License-Identifier: GPL-2.0+                                                                !
+#!--------------------------------------------------------------------------------------------------!
+
+#! This file contains ALL fypp definitions for DBCSR
+
+#:mute
+#:set n_inst = [0, 1, 2, 3]
+
+#:set nametype1 = ['d','s','z','c']
+#:set typesize1 = ['8','4','16','8']
+#:set base1 = ['r', 'r', 'c', 'c']
+#:set prec1 = ['dp','sp','dp','sp']
+#:set bits1 = ['64','32','64','32']
+#:set kind1 = ['real_8', 'real_4', 'real_8', 'real_4']
+#:set type1 = ['REAL(kind=real_8)', 'REAL(kind=real_4)', 'COMPLEX(kind=real_8)', 'COMPLEX(kind=real_4)']
+#:set dkind1 = ['dbcsr_type_real_8', 'dbcsr_type_real_4', 'dbcsr_type_complex_8', 'dbcsr_type_complex_4']
+
+#:set gemmname1 = ['DGEMM', 'SGEMM', 'ZGEMM', 'CGEMM']
+#:set normname1 = ['(DDOT', '(SDOT', '(DZNRM2', '(SCNRM2']
+
+#:set one1 = ['1.0_real_8', '1.0_real_4', 'CMPLX(1.0, 0.0, real_8)', 'CMPLX(1.0, 0.0, real_4)']
+#:set zero1 = ['0.0_real_8', '0.0_real_4', 'CMPLX(0.0, 0.0, real_8)', 'CMPLX(0.0, 0.0, real_4)']
+
+#:set kind2 = ['real_8','real_8','real_8','real_8']
+
+#:set xsmm_supported = ['1', '1', '0', '0']
+
+#:set nametype_int1 = ['i', 'l']
+#:set type_int1 = ['INTEGER(kind=int_4)', 'INTEGER(kind=int_8)']
+#:set zero_int1 = ['0', '0']
+
+#:set nametype_all1 = nametype1 + nametype_int1
+#:set type_all1 = type1 + type_int1
+#:set zero_all1 = zero1 + zero_int1
+
+#:set inst_params_float = list(zip(n_inst, nametype1, base1, prec1, kind1, type1, dkind1, normname1))
+#:set inst_params_all = list(zip(nametype_all1, type_all1, zero_all1))
+
+#! Definitions for DBCSR_C
+#:set extype1 = ['double', 'float', 'double _Complex', 'float _Complex']
+#:set ctype1 = ['REAL(kind=c_double)', 'REAL(kind=c_float)', 'COMPLEX(kind=c_double_complex)', 'COMPLEX(kind=c_float_complex)']
+#:set c_inst_params_float = list(zip(n_inst, nametype1, base1, prec1, kind1, type1, dkind1, normname1, ctype1))
+#:set c_exparams = list(zip(n_inst, nametype1, base1, prec1, ctype1, extype1))
+
+#! Handling optional arguments for non-interoperable types
+
+#:def add_num(num,numout)
+#! binary number counter e.g. [1,0,0,0] -> [0,1,0,0]
+#:set carry = 1
+#:for i in range(0,len(num))
+#:set outi = 0
+#:if carry == 1
+ #:if num[i] == 0
+  #:set outi = 1
+  #:set carry = 0
+ #:else
+  #:set outi = 0
+  #:set carry = 1
+ #:endif
+#:else
+ #:set outi = num[i]
+#:endif
+#:mute
+$: numout.append(outi)
+#:endmute
+#:endfor
+#:enddef
+
+#:def init(list,n)
+#:mute
+ #! fill a list with n zeros
+ #:for i in range(n)
+  $: list.append(0)
+ #:endfor
+#:endmute
+#:enddef
+
+#:def gen_permlist(permlist,n)
+#:mute
+ #! generates a list of permutations from n entries
+ #! example n = 2 -> [[0,0],[0,1],[1,0],[1,1]] where 0/1 means present/not present
+ #:set idx = []
+ #:set newidx = []
+ ${init(idx,n)}$
+
+ #:set imax = pow(2,n)
+ #:for i in range(0,imax)
+        $: permlist.append(idx)
+        ${add_num(idx,newidx)}$
+        #:set idx = newidx
+        #:set newidx = []
+ #:endfor
+#:endmute
+#:enddef
+
+#:def gen_vargroups(varlist,vargroups)
+#:mute
+ #! generates permuted groups of variables from a variable list
+ #! optional variables that appear together may be grouped
+ #! example: varlist = [[var1], [var2,var3]]
+ #! this gives: vargroups = [ [[var1],[var2,var3]], [[var1]], [[var2,var3]], []]
+ #:set permlist = []
+ ${gen_permlist(permlist,len(varlist))}$
+ #:for p in permlist
+    #:set group = []
+    #:for i in range(len(varlist))
+        #:if p[i] == 0
+            $: group.append(varlist[i])
+        #:endif
+   #:endfor
+   $: vargroups.append(group)
+ #:endfor
+#:endmute
+#:enddef
+
+#:def flatten(group,flatgroup)
+#:mute
+#! flattens an array by one level:
+#! [[var1],[var2,var3]] -> [var1,var2,var3]
+#:for sub in group
+ #:for x in sub
+ $: flatgroup.append(x)
+ #:endfor
+#:endfor
+#:endmute
+#:enddef
+
+#:def print_group(group, prefix=", ")
+#! for a group [[var1],[var2,var3]]
+#! prints "var1 = var1, var2 = var2, var3 = var3"
+#:set flatgroup = [item for sublist in group for item in sublist]
+$: prefix * (bool(len(group))) + ", ".join([str(i) + ' = ' + str(i) for i in flatgroup])
+#:enddef
+
+#:def print_groupif(vargroups,varlist,i,check='PRESENT',prefix='')
+#! for a group [[var1]] and a varlist [[var1]],[var2,var3]]
+#! prints "(ELSE) IF (PRESENT(var1) .AND. .NOT. PRESENT(var2) .AND. .NOT. PRESENT(var3)) THEN"
+#! to be used in a loop
+#:set group = vargroups[i]
+#:set diff = [item for item in varlist if item not in group]
+#:set stat = "ELSE IF"
+#:if i == 0
+#:set stat = "IF"
+#:elif i == len(vargroups) - 1
+#:set stat = "ELSE"
+#:endif
+#:if stat != "ELSE"
+#:set flatgroup = []
+#:set flatdiff = []
+#:mute
+${flatten(group,flatgroup)}$
+${flatten(diff,flatdiff)}$
+#:endmute
+$: stat + "(" +  " .AND. ".join([check + "(" +  prefix + str(i) + ")" for i in flatgroup]) &
+         + " .AND. " * (bool(len(diff)) * bool(len(diff) - len(varlist))) &
+         + " .AND. ".join([".NOT. " + check + "(" +  prefix + str(i) + ")" for i in flatdiff]) + ") THEN "
+#:else
+ELSE
+#:endif
+#:enddef
+
+#:endmute
