@@ -1,2 +1,5 @@
 third-party.tar.zst
 third-party/
+
+*.tar.gz
+tmp/
