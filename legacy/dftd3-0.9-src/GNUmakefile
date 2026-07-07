@@ -15,6 +15,9 @@
 .SUFFIX: .f90 .o
 
 LIBD3 = libdftd3.a
+AR ?= ar
+RANLIB ?= ranlib
+LIBTOOL ?=
 
 all: $(LIBD3)
 
@@ -26,7 +29,12 @@ vpath % $(SRCDIR)
 OBJS  = api.o common.o core.o pars.o sizes.o
 
 $(LIBD3): $(OBJS)
-	ar r $@ $^
+ifneq ($(strip $(LIBTOOL)),)
+	$(LIBTOOL) -static -o $@ $^
+else
+	$(AR) cr $@ $^
+	$(RANLIB) $@
+endif
 
 clean:
 	rm -f *.o
