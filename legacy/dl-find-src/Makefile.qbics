@@ -28,6 +28,9 @@ F90EXT = f90
 ALLOC = new
 OBJDIR = $(arch)/objects
 PARA = $(MAKECMDGOALS)
+AR ?= ar
+RANLIB ?= ranlib
+LIBTOOL ?=
 
 ########################################################################
 ##  Protland compiler
@@ -134,8 +137,12 @@ OBJ_LAPACK = $(OBJDIR)/dlf_hdlc_matrixlib.o $(OBJDIR)/dlf_hdlc_primitive.o $(OBJ
 OBJ =  $(OBJ_NOLAPACK) $(OBJ_LAPACK) 
 
 libdlf:	$(OBJ_MOD) $(OBJ)  $(OBJDIR)/dlf_serial.o
-	ar src libdlf.a $(OBJ_MOD) $(OBJ)  $(OBJDIR)/dlf_serial.o
-	ranlib libdlf.a
+ifneq ($(strip $(LIBTOOL)),)
+	$(LIBTOOL) -static -o libdlf.a $(OBJ_MOD) $(OBJ)  $(OBJDIR)/dlf_serial.o
+else
+	$(AR) cr libdlf.a $(OBJ_MOD) $(OBJ)  $(OBJDIR)/dlf_serial.o
+	$(RANLIB) libdlf.a
+endif
 	mkdir -p ../dl-find
 	cp libdlf.a *.mod ../dl-find
 
