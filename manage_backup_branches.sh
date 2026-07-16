@@ -42,22 +42,24 @@ run_git() {
   git -C "${repo_root}" "$@"
 }
 
-# Columns: short|backup_branch|remote|remote_url|upstream_ref|vendor_prefix|submodule_policy
+# Columns: short|backup_branch|remote|remote_url|upstream_ref|history_start|vendor_prefix|submodule_policy
+# history_start: a Git revision, or : for full history; init retains the revision as the shallow boundary.
 backup_prefix="backup/"
 push_remote="gh"
 records=(
-  "dftd3|backup/dftd3-lib|dftd3-lib|https://github.com/dftbplus/dftd3-lib.git|main|third-party/dftd3-lib|skip"
-  "dbcsr|backup/dbcsr|dbcsr|https://github.com/cp2k/dbcsr.git|develop|third-party/dbcsr|skip"
-  "libxs|backup/libxs|libxs|https://github.com/hfp/libxs.git|main|third-party/libxs|skip"
+  "dftd3|backup/dftd3-lib|dftd3-lib|https://github.com/dftbplus/dftd3-lib.git|main|:|third-party/dftd3-lib|skip"
+  "dbcsr|backup/dbcsr|dbcsr|https://github.com/cp2k/dbcsr.git|develop|:|third-party/dbcsr|skip"
+  "libxs|backup/libxs|libxs|https://github.com/hfp/libxs.git|main|:|third-party/libxs|skip"
+  "libxsmm|backup/libxsmm|libxsmm|https://github.com/libxsmm/libxsmm.git|main|2.0.0|third-party/libxsmm|skip"
 )
 
 target_usage() {
-  local record short branch remote url ref prefix submodule_policy shorts backups other_branches
+  local record short branch remote url ref history_start prefix submodule_policy shorts backups other_branches
   shorts=()
   backups=()
   other_branches=()
   for record in "${records[@]}"; do
-    IFS='|' read -r short branch remote url ref prefix submodule_policy <<<"${record}"
+    IFS='|' read -r short branch remote url ref history_start prefix submodule_policy <<<"${record}"
     shorts+=("${short}")
     if [[ "${branch}" == "${backup_prefix}"* ]]; then
       backups+=("${branch#"${backup_prefix}"}")
@@ -96,9 +98,9 @@ join_by() {
 
 selected_records() {
   local target="${1:-all}"
-  local short branch remote url ref prefix submodule_policy
+  local short branch remote url ref history_start prefix submodule_policy
   for record in "${records[@]}"; do
-    IFS='|' read -r short branch remote url ref prefix submodule_policy <<<"${record}"
+    IFS='|' read -r short branch remote url ref history_start prefix submodule_policy <<<"${record}"
     if [[ "${target}" == "all" || "${target}" == "${short}" || "${target}" == "${branch}" ]]; then
       printf '%s\n' "${record}"
     fi
@@ -135,8 +137,19 @@ ensure_remote() {
 fetch_ref() {
   local remote="$1"
   local ref="$2"
-  if ! run_git fetch --quiet "${remote}" "${ref}"; then
-    die "failed to fetch ${remote}/${ref}"
+  local history_start="$3"
+
+  if [[ "${history_start}" == ":" ]]; then
+    if ! run_git fetch --quiet "${remote}" "${ref}"; then
+      die "failed to fetch ${remote}/${ref}"
+    fi
+  else
+    if ! run_git fetch --quiet --shallow-exclude="${history_start}" "${remote}" "${ref}"; then
+      die "failed to shallow-fetch ${remote}/${ref} excluding ${history_start}"
+    fi
+    if ! run_git fetch --quiet --deepen=1 "${remote}" "${ref}"; then
+      die "failed to include history start ${history_start} for ${remote}/${ref}"
+    fi
   fi
   run_git rev-parse --verify FETCH_HEAD^{commit}
 }
@@ -162,11 +175,11 @@ status_one() {
 }
 
 check_one() {
-  local short="$1" branch="$2" remote="$3" url="$4" ref="$5" prefix="$6" submodule_policy="$7"
+  local short="$1" branch="$2" remote="$3" url="$4" ref="$5" history_start="$6" prefix="$7" submodule_policy="$8"
   local upstream_commit local_commit state
 
   ensure_remote "${remote}" "${url}"
-  upstream_commit="$(fetch_ref "${remote}" "${ref}")"
+  upstream_commit="$(fetch_ref "${remote}" "${ref}" "${history_start}")"
   local_commit="$(run_git rev-parse --verify "${branch}^{commit}" 2>/dev/null || true)"
   state="$(status_one "${branch}" "${upstream_commit}")"
 
@@ -181,11 +194,11 @@ check_one() {
 }
 
 update_one() {
-  local short="$1" branch="$2" remote="$3" url="$4" ref="$5" prefix="$6" submodule_policy="$7"
+  local short="$1" branch="$2" remote="$3" url="$4" ref="$5" history_start="$6" prefix="$7" submodule_policy="$8"
   local upstream_commit local_commit state current_branch
 
   ensure_remote "${remote}" "${url}"
-  upstream_commit="$(fetch_ref "${remote}" "${ref}")"
+  upstream_commit="$(fetch_ref "${remote}" "${ref}" "${history_start}")"
   local_commit="$(run_git rev-parse --verify "${branch}^{commit}" 2>/dev/null || true)"
   state="$(status_one "${branch}" "${upstream_commit}")"
 
@@ -213,7 +226,7 @@ update_one() {
 }
 
 init_one() {
-  local short="$1" branch="$2" remote="$3" url="$4" ref="$5" prefix="$6" submodule_policy="$7"
+  local short="$1" branch="$2" remote="$3" url="$4" ref="$5" history_start="$6" prefix="$7" submodule_policy="$8"
   local upstream_commit
 
   if run_git rev-parse --verify --quiet "${branch}^{commit}" >/dev/null; then
@@ -222,7 +235,7 @@ init_one() {
   fi
 
   ensure_remote "${remote}" "${url}"
-  upstream_commit="$(fetch_ref "${remote}" "${ref}")"
+  upstream_commit="$(fetch_ref "${remote}" "${ref}" "${history_start}")"
   run_git update-ref "refs/heads/${branch}" "${upstream_commit}"
   echo "${branch}: initialized at ${upstream_commit:0:12} from ${remote}/${ref}"
 }
@@ -243,7 +256,7 @@ skip_submodule_gitlinks() {
 }
 
 merge_one() {
-  local short="$1" branch="$2" remote="$3" url="$4" ref="$5" prefix="$6" submodule_policy="$7"
+  local short="$1" branch="$2" remote="$3" url="$4" ref="$5" history_start="$6" prefix="$7" submodule_policy="$8"
   local branch_commit current_branch before_commit after_commit
 
   current_branch="$(run_git branch --show-current)"
@@ -280,7 +293,7 @@ merge_one() {
 }
 
 push_one() {
-  local short="$1" branch="$2" remote="$3" url="$4" ref="$5" prefix="$6" submodule_policy="$7"
+  local short="$1" branch="$2" remote="$3" url="$4" ref="$5" history_start="$6" prefix="$7" submodule_policy="$8"
   local local_commit
 
   run_git remote get-url "${push_remote}" >/dev/null 2>&1 || die "remote '${push_remote}' is not configured"
@@ -290,12 +303,12 @@ push_one() {
 }
 
 print_records() {
-  local short branch remote url ref prefix submodule_policy
-  local record_format='%-16s %-14s %-10s %-42s %-9s -> %s\n'
-  printf "${record_format}" "Branch" "Upstream" "Remote" "URL" "Submodule" "Vendor prefix"
+  local short branch remote url ref history_start prefix submodule_policy
+  local record_format='%-16s %-14s %-10s %-42s %-12s %-9s -> %s\n'
+  printf "${record_format}" "Branch" "Upstream" "Remote" "URL" "History start" "Submodule" "Vendor prefix"
   for record in "${records[@]}"; do
-    IFS='|' read -r short branch remote url ref prefix submodule_policy <<<"${record}"
-    printf "${record_format}" "${branch}" "${remote}/${ref}" "${remote}" "${url}" "${submodule_policy}" "${prefix}"
+    IFS='|' read -r short branch remote url ref history_start prefix submodule_policy <<<"${record}"
+    printf "${record_format}" "${branch}" "${remote}/${ref}" "${remote}" "${url}" "${history_start}" "${submodule_policy}" "${prefix}"
   done
 }
 
@@ -306,7 +319,7 @@ list_records() {
 main() {
   local command="${1:-check}"
   local target="${2:-all}"
-  local record short branch remote url ref prefix submodule_policy
+  local record short branch remote url ref history_start prefix submodule_policy
 
   cd "${repo_root}"
 
@@ -333,8 +346,8 @@ main() {
 
   while IFS= read -r record; do
     [[ -n "${record}" ]] || continue
-    IFS='|' read -r short branch remote url ref prefix submodule_policy <<<"${record}"
-    "${command}_one" "${short}" "${branch}" "${remote}" "${url}" "${ref}" "${prefix}" "${submodule_policy}"
+    IFS='|' read -r short branch remote url ref history_start prefix submodule_policy <<<"${record}"
+    "${command}_one" "${short}" "${branch}" "${remote}" "${url}" "${ref}" "${history_start}" "${prefix}" "${submodule_policy}"
   done < <(selected_records "${target}")
 }
 
