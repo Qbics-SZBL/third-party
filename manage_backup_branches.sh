@@ -51,8 +51,8 @@ push_remote="gh"
 records=(
   "dftd3|backup/dftd3-lib|dftd3-lib|https://github.com/dftbplus/dftd3-lib.git|main|:|third-party/dftd3-lib|skip"
   "dbcsr|backup/dbcsr|dbcsr|https://github.com/cp2k/dbcsr.git|develop|:|third-party/dbcsr|skip"
-  "libxs|backup/libxs|libxs|https://github.com/hfp/libxs.git|main|:|third-party/libxs|skip"
-  "libxsmm|backup/libxsmm|libxsmm|https://github.com/libxsmm/libxsmm.git|main|2.0.0|third-party/libxsmm|skip"
+  # "libxs|backup/libxs|libxs|https://github.com/hfp/libxs.git|main|:|third-party/libxs|skip"
+  # "libxsmm|backup/libxsmm|libxsmm|https://github.com/libxsmm/libxsmm.git|main|2.0.0|third-party/libxsmm|skip"
 )
 
 target_usage() {
